@@ -1,0 +1,20 @@
+{
+  "name": "watch-party",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A host-run watch party for local videos and YouTube.",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test --test-concurrency=1",
+    "check": "node --check server.js && node --check lib/rooms.js && node --check public/app.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "multer": "^2.0.2",
+    "socket.io": "^4.8.1"
+  },
+  "devDependencies": { "socket.io-client": "^4.8.1" }
+}
