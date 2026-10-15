@@ -1,0 +1,14 @@
+{
+  "runs": [
+    {
+      "date": "2026-10-15T09:57:18.924535+00:00",
+      "files": 12,
+      "input_tokens": null,
+      "output_tokens": null,
+      "usage_available": false,
+      "note": "Agent token usage not exposed by the collaboration tool; no standalone model API was called."
+    }
+  ],
+  "total_input_tokens": null,
+  "total_output_tokens": null
+}
