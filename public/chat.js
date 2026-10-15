@@ -5,9 +5,8 @@ window.PartyChat = class PartyChat {
   constructor({ request, getContext }) {
     this.request = request;
     this.getContext = getContext;
-    this.$ = id => document.getElementById(id);
-    this.input = this.$('chat-input');
-    this.log = this.$('chat-messages');
+    this.input = document.getElementById('chat-input');
+    this.log = document.getElementById('chat-messages');
     this.timeFormat = new Intl.DateTimeFormat(undefined, { hour: '2-digit', minute: '2-digit' });
     this.code = null;
     this.selfId = null;
@@ -36,20 +35,20 @@ window.PartyChat = class PartyChat {
       button.type = 'button'; button.className = 'emoji-option';
       button.textContent = emoji; button.setAttribute('aria-label', label);
       button.addEventListener('click', () => this.insertEmoji(emoji));
-      this.$('emoji-options').append(button);
+      document.getElementById('emoji-options').append(button);
     }
-    this.$('chat-form').addEventListener('submit', event => { event.preventDefault(); this.send(); });
+    document.getElementById('chat-form').addEventListener('submit', event => { event.preventDefault(); this.send(); });
     this.input.addEventListener('input', () => { this.error = ''; this.refreshStatus(); });
     this.input.addEventListener('keydown', event => {
       if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
         event.preventDefault(); this.send();
       }
     });
-    this.$('emoji-toggle').addEventListener('click', () => this.toggleEmoji(this.$('emoji-picker').hidden));
-    this.$('emoji-close').addEventListener('click', () => this.toggleEmoji(false, true));
-    this.$('emoji-picker').addEventListener('keydown', event => {
+    document.getElementById('emoji-toggle').addEventListener('click', () => this.toggleEmoji(document.getElementById('emoji-picker').hidden));
+    document.getElementById('emoji-close').addEventListener('click', () => this.toggleEmoji(false, true));
+    document.getElementById('emoji-picker').addEventListener('keydown', event => {
       if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); this.toggleEmoji(false, true); return; }
-      const buttons = [...this.$('emoji-options').children];
+      const buttons = [...document.getElementById('emoji-options').children];
       const index = buttons.indexOf(document.activeElement);
       if (index < 0) return;
       const shifts = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 7, ArrowUp: -7 };
@@ -60,13 +59,13 @@ window.PartyChat = class PartyChat {
       }
     });
     document.addEventListener('pointerdown', event => {
-      if (!this.$('emoji-picker').hidden && !this.$('emoji-picker').contains(event.target) && !this.$('emoji-toggle').contains(event.target)) this.toggleEmoji(false);
+      if (!document.getElementById('emoji-picker').hidden && !document.getElementById('emoji-picker').contains(event.target) && !document.getElementById('emoji-toggle').contains(event.target)) this.toggleEmoji(false);
     });
     this.log.addEventListener('scroll', () => {
       this.following = this.log.scrollHeight - this.log.clientHeight - this.log.scrollTop < 45;
       if (this.following) { this.unread = 0; this.updateUnread(); }
     });
-    this.$('chat-new-messages').addEventListener('click', () => {
+    document.getElementById('chat-new-messages').addEventListener('click', () => {
       this.following = true; this.unread = 0; this.log.scrollTop = this.log.scrollHeight; this.updateUnread();
     });
     this.refreshStatus();
@@ -168,15 +167,15 @@ window.PartyChat = class PartyChat {
     const joined = Boolean(this.code && context.roomCode === this.code);
     const count = Array.from(this.input.value).length;
     this.input.disabled = !joined;
-    this.$('emoji-toggle').disabled = !joined;
-    this.$('chat-send').disabled = !joined || !context.connected || Boolean(this.sendingId) || !this.input.value.trim() || count > 1000;
-    this.$('chat-count').textContent = `${count} / 1000`;
-    this.$('chat-count').classList.toggle('over-limit', count > 1000);
-    this.$('chat-empty').hidden = this.messages.length > 0;
-    this.$('chat-state').textContent = joined ? context.connected ? 'LIVE' : 'RECONNECTING' : 'ROOM ONLY';
+    document.getElementById('emoji-toggle').disabled = !joined;
+    document.getElementById('chat-send').disabled = !joined || !context.connected || Boolean(this.sendingId) || !this.input.value.trim() || count > 1000;
+    document.getElementById('chat-count').textContent = `${count} / 1000`;
+    document.getElementById('chat-count').classList.toggle('over-limit', count > 1000);
+    document.getElementById('chat-empty').hidden = this.messages.length > 0;
+    document.getElementById('chat-state').textContent = joined ? context.connected ? 'LIVE' : 'RECONNECTING' : 'ROOM ONLY';
     const hint = this.error || (!joined ? 'Join a party to chat.' : !context.connected ? 'Reconnecting… your draft stays here.' : this.sendingId ? 'Sending…' : 'Enter to send · Shift+Enter for a new line');
-    if (this.$('chat-hint').textContent !== hint) this.$('chat-hint').textContent = hint;
-    this.$('chat-hint').classList.toggle('chat-error', Boolean(this.error));
+    if (document.getElementById('chat-hint').textContent !== hint) document.getElementById('chat-hint').textContent = hint;
+    document.getElementById('chat-hint').classList.toggle('chat-error', Boolean(this.error));
   }
 
   renderMessages() {
@@ -210,15 +209,15 @@ window.PartyChat = class PartyChat {
   }
 
   updateUnread() {
-    const button = this.$('chat-new-messages'); button.hidden = !this.unread;
+    const button = document.getElementById('chat-new-messages'); button.hidden = !this.unread;
     button.textContent = `${this.unread} new ${this.unread === 1 ? 'message' : 'messages'} ↓`;
   }
 
   toggleEmoji(open, returnFocus = false) {
-    this.$('emoji-picker').hidden = !open;
-    this.$('emoji-toggle').setAttribute('aria-expanded', String(open));
-    if (open) this.$('emoji-options').firstElementChild.focus();
-    else if (returnFocus) this.$('emoji-toggle').focus();
+    document.getElementById('emoji-picker').hidden = !open;
+    document.getElementById('emoji-toggle').setAttribute('aria-expanded', String(open));
+    if (open) document.getElementById('emoji-options').firstElementChild.focus();
+    else if (returnFocus) document.getElementById('emoji-toggle').focus();
   }
 
   insertEmoji(emoji) {

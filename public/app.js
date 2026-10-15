@@ -1,9 +1,8 @@
 /* Plain browser JavaScript. Socket.IO carries room state; HTTP carries video bytes. */
 'use strict';
 
-const $ = id => document.getElementById(id);
 const socket = io({ reconnection: true, reconnectionDelay: 500, reconnectionDelayMax: 4000, timeout: 8000 });
-const video = $('local-player');
+const video = document.getElementById('local-player');
 let room = null;
 let identity = null;
 let mode = 'create';
@@ -29,7 +28,7 @@ function readStorage(store, key, fallback = null) {
 }
 function saveStorage(store, key, value) { try { value === null ? store.removeItem(key) : store.setItem(key, JSON.stringify(value)); } catch { /* Private browsing may disable storage. */ } }
 let savedSession = readStorage(sessionStorage, 'watchparty.session');
-$('display-name').value = readStorage(localStorage, 'watchparty.name', '');
+document.getElementById('display-name').value = readStorage(localStorage, 'watchparty.name', '');
 
 function icon(name) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -43,8 +42,8 @@ function toast(message, error = false) {
   const item = document.createElement('div');
   item.className = `toast${error ? ' error' : ''}`;
   item.textContent = message;
-  $('toast-stack').append(item);
-  while ($('toast-stack').children.length > 3) $('toast-stack').firstChild.remove();
+  document.getElementById('toast-stack').append(item);
+  while (document.getElementById('toast-stack').children.length > 3) document.getElementById('toast-stack').firstChild.remove();
   setTimeout(() => item.remove(), error ? 6500 : 4000);
 }
 function request(event, data = {}) {
@@ -66,50 +65,50 @@ function time(value) {
 }
 function position() { return room?.media?.kind === 'youtube' ? (ytReady ? yt.getCurrentTime() || 0 : 0) : video.currentTime || 0; }
 function duration() { return room?.media?.kind === 'youtube' ? (ytReady ? yt.getDuration() || 0 : 0) : Number.isFinite(video.duration) ? video.duration : 0; }
-function connection(status, text) { $('connection').className = `connection ${status}`; $('connection').lastElementChild.textContent = text; renderPermissions(); }
+function connection(status, text) { document.getElementById('connection').className = `connection ${status}`; document.getElementById('connection').lastElementChild.textContent = text; renderPermissions(); }
 
 function openRoomDialog(nextMode, code = '') {
   mode = nextMode;
-  $('create-tab').classList.toggle('active', mode === 'create');
-  $('join-tab').classList.toggle('active', mode === 'join');
-  $('join-code-field').hidden = mode !== 'join';
-  $('join-code').required = mode === 'join';
-  if (code) $('join-code').value = code.toUpperCase();
-  $('dialog-title').textContent = mode === 'create' ? 'Create a party.' : 'Enter the code.';
-  $('room-submit').replaceChildren(document.createTextNode(mode === 'create' ? 'Create my party' : 'Join the fun'), icon('arrow'));
-  $('room-error').hidden = true;
-  if (!$('room-dialog').open) $('room-dialog').showModal();
+  document.getElementById('create-tab').classList.toggle('active', mode === 'create');
+  document.getElementById('join-tab').classList.toggle('active', mode === 'join');
+  document.getElementById('join-code-field').hidden = mode !== 'join';
+  document.getElementById('join-code').required = mode === 'join';
+  if (code) document.getElementById('join-code').value = code.toUpperCase();
+  document.getElementById('dialog-title').textContent = mode === 'create' ? 'Create a party.' : 'Enter the code.';
+  document.getElementById('room-submit').replaceChildren(document.createTextNode(mode === 'create' ? 'Create my party' : 'Join the fun'), icon('arrow'));
+  document.getElementById('room-error').hidden = true;
+  if (!document.getElementById('room-dialog').open) document.getElementById('room-dialog').showModal();
 }
 
-$('create-open').addEventListener('click', () => openRoomDialog('create'));
-$('join-open').addEventListener('click', () => openRoomDialog('join'));
-$('create-tab').addEventListener('click', () => openRoomDialog('create'));
-$('join-tab').addEventListener('click', () => openRoomDialog('join'));
-$('screen-start').addEventListener('click', () => room ? $('youtube-url').focus() : openRoomDialog('create'));
-$('help-button').addEventListener('click', () => $('help-dialog').showModal());
-$('room-menu-open').addEventListener('click', () => { if (room) $('party-dialog').showModal(); });
-document.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => $(button.dataset.close).close()));
+document.getElementById('create-open').addEventListener('click', () => openRoomDialog('create'));
+document.getElementById('join-open').addEventListener('click', () => openRoomDialog('join'));
+document.getElementById('create-tab').addEventListener('click', () => openRoomDialog('create'));
+document.getElementById('join-tab').addEventListener('click', () => openRoomDialog('join'));
+document.getElementById('screen-start').addEventListener('click', () => room ? document.getElementById('youtube-url').focus() : openRoomDialog('create'));
+document.getElementById('help-button').addEventListener('click', () => document.getElementById('help-dialog').showModal());
+document.getElementById('room-menu-open').addEventListener('click', () => { if (room) document.getElementById('party-dialog').showModal(); });
+document.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => document.getElementById(button.dataset.close).close()));
 document.querySelectorAll('dialog').forEach(dialog => dialog.addEventListener('click', event => {
   const rect = dialog.getBoundingClientRect();
   if (event.target === dialog && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) dialog.close();
 }));
-$('room-dialog').addEventListener('close', () => { if (!room) { pendingFile = null; pendingSource = null; } });
+document.getElementById('room-dialog').addEventListener('close', () => { if (!room) { pendingFile = null; pendingSource = null; } });
 
-$('room-form').addEventListener('submit', async event => {
+document.getElementById('room-form').addEventListener('submit', async event => {
   event.preventDefault();
-  $('room-submit').disabled = true;
-  $('room-error').hidden = true;
+  document.getElementById('room-submit').disabled = true;
+  document.getElementById('room-error').hidden = true;
   try {
-    const name = $('display-name').value.trim();
-    const data = await request(mode === 'create' ? 'room:create' : 'room:join', { name, code: $('join-code').value.trim() });
+    const name = document.getElementById('display-name').value.trim();
+    const data = await request(mode === 'create' ? 'room:create' : 'room:join', { name, code: document.getElementById('join-code').value.trim() });
     saveStorage(localStorage, 'watchparty.name', name);
     adoptRoom(data);
-    $('room-dialog').close();
+    document.getElementById('room-dialog').close();
     toast(mode === 'create' ? 'Your room is ready. Save your people a seat.' : 'You’re in. Make yourself comfortable.');
     if (pendingFile && isHost()) { const file = pendingFile; pendingFile = null; uploadFile(file); }
     if (pendingSource && isHost()) { pendingSource = null; addYouTube(); }
-  } catch (error) { $('room-error').textContent = error.message; $('room-error').hidden = false; }
-  finally { $('room-submit').disabled = false; }
+  } catch (error) { document.getElementById('room-error').textContent = error.message; document.getElementById('room-error').hidden = false; }
+  finally { document.getElementById('room-submit').disabled = false; }
 });
 
 function adoptRoom(data) {
@@ -135,50 +134,50 @@ function applyState(state, force = false) {
 function renderPermissions() {
   const controllable = canControl();
   const hasMedia = Boolean(room?.media);
-  $('play-button').disabled = !controllable || !hasMedia || sourceLoading || !$('player-error').hidden;
-  $('seek').disabled = !controllable || !hasMedia || sourceLoading || !duration() || !$('player-error').hidden;
-  $('upload-button').disabled = Boolean(room && !controllable) || Boolean(uploadRequest);
-  $('youtube-url').disabled = Boolean(room && !controllable);
-  $('youtube-submit').disabled = Boolean(room && !controllable);
-  $('mute-button').disabled = !hasMedia;
-  $('volume').disabled = !hasMedia;
-  $('invite-button').disabled = !room;
-  $('copy-code').disabled = !room;
-  $('control-label').replaceChildren(icon('crown'), document.createTextNode(isHost() ? 'YOU CONTROL PLAYBACK' : 'HOST CONTROLS PLAYBACK'));
-  $('source-permission').textContent = room ? isHost() ? 'HOST CONTROLS · THAT’S YOU' : 'YOUR HOST PICKS THE PICTURE' : 'YOUR VIDEO. YOUR CHOICE.';
-  $('create-open').disabled = $('join-open').disabled = !socket.connected || restoring;
-  $('leave-button').disabled = !socket.connected || restoring;
+  document.getElementById('play-button').disabled = !controllable || !hasMedia || sourceLoading || !document.getElementById('player-error').hidden;
+  document.getElementById('seek').disabled = !controllable || !hasMedia || sourceLoading || !duration() || !document.getElementById('player-error').hidden;
+  document.getElementById('upload-button').disabled = Boolean(room && !controllable) || Boolean(uploadRequest);
+  document.getElementById('youtube-url').disabled = Boolean(room && !controllable);
+  document.getElementById('youtube-submit').disabled = Boolean(room && !controllable);
+  document.getElementById('mute-button').disabled = !hasMedia;
+  document.getElementById('volume').disabled = !hasMedia;
+  document.getElementById('invite-button').disabled = !room;
+  document.getElementById('copy-code').disabled = !room;
+  document.getElementById('control-label').replaceChildren(icon('crown'), document.createTextNode(isHost() ? 'YOU CONTROL PLAYBACK' : 'HOST CONTROLS PLAYBACK'));
+  document.getElementById('source-permission').textContent = room ? isHost() ? 'HOST CONTROLS · THAT’S YOU' : 'YOUR HOST PICKS THE PICTURE' : 'YOUR VIDEO. YOUR CHOICE.';
+  document.getElementById('create-open').disabled = document.getElementById('join-open').disabled = !socket.connected || restoring;
+  document.getElementById('leave-button').disabled = !socket.connected || restoring;
   chat.refreshStatus();
 }
 
 function renderRoom() {
-  $('home-view').hidden = Boolean(room);
-  $('party-view').hidden = !room;
-  $('lobby-actions').hidden = Boolean(room);
-  $('room-actions').hidden = !room;
-  $('heading-description').textContent = room ? isHost() ? 'Your room. Your people. You have the controls.' : 'You’re in good company. Settle in.' : 'Different places. One movie night.';
-  $('room-code').textContent = room?.code || '— — — — — —';
-  $('room-code').classList.toggle('empty-code', !room);
+  document.getElementById('home-view').hidden = Boolean(room);
+  document.getElementById('party-view').hidden = !room;
+  document.getElementById('lobby-actions').hidden = Boolean(room);
+  document.getElementById('room-actions').hidden = !room;
+  document.getElementById('heading-description').textContent = room ? isHost() ? 'Your room. Your people. You have the controls.' : 'You’re in good company. Settle in.' : 'Different places. One movie night.';
+  document.getElementById('room-code').textContent = room?.code || '— — — — — —';
+  document.getElementById('room-code').classList.toggle('empty-code', !room);
   const members = room?.members || [];
   const host = members.find(member => member.id === room?.hostId);
   const title = host ? `${host.name}’s party` : 'Your party';
-  $('party-title').textContent = title;
-  $('menu-title').textContent = title;
-  $('menu-room-code').textContent = room?.code || '';
-  $('menu-members').replaceChildren();
+  document.getElementById('party-title').textContent = title;
+  document.getElementById('menu-title').textContent = title;
+  document.getElementById('menu-room-code').textContent = room?.code || '';
+  document.getElementById('menu-members').replaceChildren();
   for (const member of members) {
     const item = document.createElement('span');
     item.className = `popup-member${member.online ? '' : ' offline'}`;
     item.textContent = `${member.name}${member.id === room.hostId ? ' · Host' : ''}${member.id === identity?.selfId ? ' · You' : ''}${member.online ? '' : ' · Reconnecting'}`;
-    $('menu-members').append(item);
+    document.getElementById('menu-members').append(item);
   }
   const online = members.filter(member => member.online).length;
-  $('member-count').textContent = String(members.length).padStart(2, '0');
-  $('online-count').textContent = `${online} ONLINE`;
-  $('empty-guests').hidden = Boolean(room);
-  $('invite-description').textContent = room ? 'Share a code. Save someone a seat.' : 'Good nights start with good company.';
-  $('room-bottom-text').textContent = room ? `${online} ${online === 1 ? 'person' : 'people'}. One shared screen.` : 'A private space for your people.';
-  $('member-list').replaceChildren();
+  document.getElementById('member-count').textContent = String(members.length).padStart(2, '0');
+  document.getElementById('online-count').textContent = `${online} ONLINE`;
+  document.getElementById('empty-guests').hidden = Boolean(room);
+  document.getElementById('invite-description').textContent = room ? 'Share a code. Save someone a seat.' : 'Good nights start with good company.';
+  document.getElementById('room-bottom-text').textContent = room ? `${online} ${online === 1 ? 'person' : 'people'}. One shared screen.` : 'A private space for your people.';
+  document.getElementById('member-list').replaceChildren();
   for (const member of members) {
     const row = document.createElement('div'); row.className = `member${member.online ? '' : ' member-offline'}`;
     const avatar = document.createElement('div'); avatar.className = 'member-avatar'; avatar.textContent = Array.from(member.name)[0].toUpperCase();
@@ -196,32 +195,32 @@ function renderRoom() {
         catch (error) { toast(error.message, true); transfer.disabled = false; }
       }); row.append(transfer);
     }
-    $('member-list').append(row);
+    document.getElementById('member-list').append(row);
   }
-  $('now-playing').hidden = !room?.media;
-  $('media-title').textContent = room?.media?.title || '';
-  $('media-type').textContent = room?.media?.kind === 'youtube' ? 'YOUTUBE' : 'LOCAL VIDEO';
-  $('source-badge').textContent = room?.media ? room.playing ? 'PLAYING TOGETHER' : 'READY WHEN YOU ARE' : 'WAITING FOR A VIDEO';
-  $('screen-note').textContent = room ? isHost() ? 'You have the controls. Everyone follows your play, pause and seek.' : 'Your host controls the picture. Volume is all yours.' : 'One host. A shared screen. A proper movie night.';
-  $('screen-start').textContent = room ? isHost() ? 'Choose your first video ↓' : 'Your host is choosing the video' : 'Create a party to begin';
-  $('screen-start').disabled = Boolean(room && !isHost());
-  setIcon($('play-button'), room?.playing ? 'pause' : 'play');
-  $('play-button').setAttribute('aria-label', room?.playing ? 'Pause for everyone' : 'Play for everyone');
+  document.getElementById('now-playing').hidden = !room?.media;
+  document.getElementById('media-title').textContent = room?.media?.title || '';
+  document.getElementById('media-type').textContent = room?.media?.kind === 'youtube' ? 'YOUTUBE' : 'LOCAL VIDEO';
+  document.getElementById('source-badge').textContent = room?.media ? room.playing ? 'PLAYING TOGETHER' : 'READY WHEN YOU ARE' : 'WAITING FOR A VIDEO';
+  document.getElementById('screen-note').textContent = room ? isHost() ? 'You have the controls. Everyone follows your play, pause and seek.' : 'Your host controls the picture. Volume is all yours.' : 'One host. A shared screen. A proper movie night.';
+  document.getElementById('screen-start').textContent = room ? isHost() ? 'Choose your first video ↓' : 'Your host is choosing the video' : 'Create a party to begin';
+  document.getElementById('screen-start').disabled = Boolean(room && !isHost());
+  setIcon(document.getElementById('play-button'), room?.playing ? 'pause' : 'play');
+  document.getElementById('play-button').setAttribute('aria-label', room?.playing ? 'Pause for everyone' : 'Play for everyone');
   renderPermissions();
 }
 
 function resetParty() {
-  for (const id of ['party-dialog', 'invite-dialog']) if ($(id).open) $(id).close();
+  for (const id of ['party-dialog', 'invite-dialog']) if (document.getElementById(id).open) document.getElementById(id).close();
   if (uploadRequest) uploadRequest.abort();
   room = null; identity = null; savedSession = null; pendingSource = null; pendingFile = null;
   chat.reset();
   saveStorage(sessionStorage, 'watchparty.session', null);
   loadMedia(null);
   renderRoom();
-  $('activity-text').textContent = 'Your next movie night starts here.';
+  document.getElementById('activity-text').textContent = 'Your next movie night starts here.';
   const url = new URL(location.href); url.searchParams.delete('room'); history.replaceState(null, '', url);
 }
-$('leave-button').addEventListener('click', async () => {
+document.getElementById('leave-button').addEventListener('click', async () => {
   try { await request('room:leave'); resetParty(); toast('You left the room. Until the next movie night.'); }
   catch (error) { toast(error.message, true); }
 });
@@ -232,12 +231,12 @@ socket.on('connect', async () => {
     restoring = true; renderPermissions();
     try {
       const result = await request('room:join', { code: savedSession.code, token: savedSession.token });
-      adoptRoom(result); $('activity-text').textContent = 'Back in the room. Your place was saved.';
+      adoptRoom(result); document.getElementById('activity-text').textContent = 'Back in the room. Your place was saved.';
     } catch (error) {
       if (!socket.connected) return;
       const previousCode = savedSession.code;
       resetParty(); openRoomDialog('join', previousCode);
-      $('room-error').textContent = error.message; $('room-error').hidden = false;
+      document.getElementById('room-error').textContent = error.message; document.getElementById('room-error').hidden = false;
     } finally { restoring = false; renderRoom(); }
   }
 });
@@ -245,19 +244,19 @@ socket.on('disconnect', () => {
   chat.toggleEmoji(false);
   connection('offline', 'Reconnecting');
   video.pause(); if (ytReady) yt.pauseVideo();
-  $('activity-text').textContent = 'Connection lost. Playback is paused here while we reconnect.';
+  document.getElementById('activity-text').textContent = 'Connection lost. Playback is paused here while we reconnect.';
   renderRoom();
 });
 socket.on('connect_error', () => connection('offline', 'Server unavailable'));
 socket.on('room:state', ({ state, activity }) => {
   if (!identity || room?.code !== state.code) return;
   applyState(state);
-  if (activity) $('activity-text').textContent = activity;
+  if (activity) document.getElementById('activity-text').textContent = activity;
 });
 socket.on('chat:message', ({ code, message }) => chat.receive(code, message));
 
-function clearPlayerError() { $('player-error').hidden = true; playbackFailureId = null; }
-function playerError(message) { $('player-error-text').textContent = message; $('player-error').hidden = false; }
+function clearPlayerError() { document.getElementById('player-error').hidden = true; playbackFailureId = null; }
+function playerError(message) { document.getElementById('player-error-text').textContent = message; document.getElementById('player-error').hidden = false; }
 function loadYouTubeAPI() {
   if (window.YT?.Player) return Promise.resolve();
   if (ytPromise) return ytPromise;
@@ -275,24 +274,24 @@ async function loadMedia(media) {
   const id = media?.id || null;
   currentMediaId = id; sourceLoading = Boolean(media);
   clearTimeout(youtubeReadyTimer);
-  clearPlayerError(); $('playback-gate').hidden = true;
+  clearPlayerError(); document.getElementById('playback-gate').hidden = true;
   video.pause(); video.removeAttribute('src'); video.load(); video.hidden = true;
   if (yt) { yt.destroy(); yt = null; }
   ytReady = false;
-  $('youtube-wrap').replaceChildren(Object.assign(document.createElement('div'), { id: 'youtube-player' }));
-  $('youtube-wrap').hidden = true;
-  $('empty-screen').hidden = Boolean(media);
-  $('current-time').textContent = $('duration').textContent = '00:00';
-  $('seek').value = '0';
+  document.getElementById('youtube-wrap').replaceChildren(Object.assign(document.createElement('div'), { id: 'youtube-player' }));
+  document.getElementById('youtube-wrap').hidden = true;
+  document.getElementById('empty-screen').hidden = Boolean(media);
+  document.getElementById('current-time').textContent = document.getElementById('duration').textContent = '00:00';
+  document.getElementById('seek').value = '0';
   renderPermissions();
   if (!media) return;
   if (media.kind === 'file') {
     video.hidden = false;
     video.src = `/api/rooms/${room.code}/media/${media.id}?token=${encodeURIComponent(identity.token)}`;
-    video.volume = Number($('volume').value) / 100;
+    video.volume = Number(document.getElementById('volume').value) / 100;
     video.load();
   } else {
-    $('youtube-wrap').hidden = false;
+    document.getElementById('youtube-wrap').hidden = false;
     try {
       await loadYouTubeAPI();
       if (currentMediaId !== id) return;
@@ -310,11 +309,11 @@ async function loadMedia(media) {
             if (currentMediaId !== id) return;
             clearTimeout(youtubeReadyTimer); clearPlayerError();
             ytReady = true; sourceLoading = false;
-            event.target.setVolume(Number($('volume').value));
+            event.target.setVolume(Number(document.getElementById('volume').value));
             if (video.muted) event.target.mute();
             renderPermissions(); syncLoadedPlayer(id);
           },
-          onAutoplayBlocked: () => { if (currentMediaId === id) $('playback-gate').hidden = false; },
+          onAutoplayBlocked: () => { if (currentMediaId === id) document.getElementById('playback-gate').hidden = false; },
           onStateChange: event => { if (currentMediaId === id && event.data === 0 && canControl() && room?.playing) sendPlayback('pause'); },
           onError: event => {
             if (currentMediaId !== id) return;
@@ -337,16 +336,16 @@ function applyPlayback() {
     video.currentTime = Math.min(target, Number.isFinite(video.duration) ? video.duration : target);
     if (room.playing) {
       const id = currentMediaId;
-      video.play().then(() => { if (id === currentMediaId) $('playback-gate').hidden = true; }).catch(error => {
+      video.play().then(() => { if (id === currentMediaId) document.getElementById('playback-gate').hidden = true; }).catch(error => {
         if (id !== currentMediaId || !room?.playing || error.name === 'AbortError') return;
-        if (error.name === 'NotAllowedError') $('playback-gate').hidden = false;
+        if (error.name === 'NotAllowedError') document.getElementById('playback-gate').hidden = false;
         else if (playbackFailureId !== id) { playbackFailureId = id; playerError('This browser could not decode the video. Try an MP4 encoded with H.264 video and AAC audio.'); }
       });
-    } else { video.pause(); $('playback-gate').hidden = true; }
+    } else { video.pause(); document.getElementById('playback-gate').hidden = true; }
   } else if (ytReady) {
     yt.seekTo(target, true);
     if (room.playing) yt.playVideo();
-    else { yt.pauseVideo(); $('playback-gate').hidden = true; }
+    else { yt.pauseVideo(); document.getElementById('playback-gate').hidden = true; }
   }
 }
 
@@ -367,12 +366,12 @@ video.addEventListener('error', () => {
   renderPermissions();
 });
 video.addEventListener('ended', () => { if (canControl() && room?.playing) sendPlayback('pause'); });
-$('retry-player').addEventListener('click', () => { if (room?.media) loadMedia(room.media); });
-$('enable-playback').addEventListener('click', async () => {
+document.getElementById('retry-player').addEventListener('click', () => { if (room?.media) loadMedia(room.media); });
+document.getElementById('enable-playback').addEventListener('click', async () => {
   if (!room?.media) return;
   if (room.media.kind === 'file') video.play().catch(() => {});
   else if (ytReady) yt.playVideo();
-  $('playback-gate').hidden = true;
+  document.getElementById('playback-gate').hidden = true;
   try { const result = await request('room:snapshot'); applyState(result.state, true); }
   catch (error) { toast(error.message, true); }
 });
@@ -382,7 +381,7 @@ async function sendPlayback(action, target = position()) {
   try { const result = await request('playback:action', { action, position: target, mediaId: room.media.id }); applyState(result.state); }
   catch (error) { toast(error.message, true); }
 }
-$('play-button').addEventListener('click', () => {
+document.getElementById('play-button').addEventListener('click', () => {
   if (!canControl()) return;
   const action = room.playing ? 'pause' : 'play';
   if (action === 'play') {
@@ -391,40 +390,40 @@ $('play-button').addEventListener('click', () => {
   }
   sendPlayback(action);
 });
-$('seek').addEventListener('change', () => sendPlayback('seek', duration() * Number($('seek').value) / 1000));
-$('seek').addEventListener('input', () => { $('current-time').textContent = time(duration() * Number($('seek').value) / 1000); });
-function updateMute() { setIcon($('mute-button'), video.muted ? 'muted' : 'volume'); $('mute-button').setAttribute('aria-label', video.muted ? 'Unmute your audio' : 'Mute your audio'); }
-$('mute-button').addEventListener('click', () => { video.muted = !video.muted; if (ytReady) video.muted ? yt.mute() : yt.unMute(); updateMute(); });
-$('volume').addEventListener('input', () => { video.volume = Number($('volume').value) / 100; video.muted = false; if (ytReady) { yt.setVolume(Number($('volume').value)); yt.unMute(); } updateMute(); });
-$('fullscreen-button').addEventListener('click', async () => {
-  try { if (document.fullscreenElement) await document.exitFullscreen(); else if ($('player-stage').closest('.theater').requestFullscreen) await $('player-stage').closest('.theater').requestFullscreen(); else toast('Fullscreen is not available in this browser.', true); }
+document.getElementById('seek').addEventListener('change', () => sendPlayback('seek', duration() * Number(document.getElementById('seek').value) / 1000));
+document.getElementById('seek').addEventListener('input', () => { document.getElementById('current-time').textContent = time(duration() * Number(document.getElementById('seek').value) / 1000); });
+function updateMute() { setIcon(document.getElementById('mute-button'), video.muted ? 'muted' : 'volume'); document.getElementById('mute-button').setAttribute('aria-label', video.muted ? 'Unmute your audio' : 'Mute your audio'); }
+document.getElementById('mute-button').addEventListener('click', () => { video.muted = !video.muted; if (ytReady) video.muted ? yt.mute() : yt.unMute(); updateMute(); });
+document.getElementById('volume').addEventListener('input', () => { video.volume = Number(document.getElementById('volume').value) / 100; video.muted = false; if (ytReady) { yt.setVolume(Number(document.getElementById('volume').value)); yt.unMute(); } updateMute(); });
+document.getElementById('fullscreen-button').addEventListener('click', async () => {
+  try { if (document.fullscreenElement) await document.exitFullscreen(); else if (document.getElementById('player-stage').closest('.theater').requestFullscreen) await document.getElementById('player-stage').closest('.theater').requestFullscreen(); else toast('Fullscreen is not available in this browser.', true); }
   catch { toast('Your browser could not enter fullscreen.', true); }
 });
 setInterval(() => {
   if (!room?.media) return;
   const length = duration();
-  $('duration').textContent = time(length);
-  if (document.activeElement !== $('seek')) {
-    $('current-time').textContent = time(position());
-    $('seek').value = length ? Math.min(1000, position() / length * 1000) : 0;
+  document.getElementById('duration').textContent = time(length);
+  if (document.activeElement !== document.getElementById('seek')) {
+    document.getElementById('current-time').textContent = time(position());
+    document.getElementById('seek').value = length ? Math.min(1000, position() / length * 1000) : 0;
   }
-  $('seek').disabled = !canControl() || sourceLoading || !length || !$('player-error').hidden;
+  document.getElementById('seek').disabled = !canControl() || sourceLoading || !length || !document.getElementById('player-error').hidden;
 }, 250);
 
 async function addYouTube() {
   if (!room) { pendingSource = 'youtube'; openRoomDialog('create'); return; }
   if (!canControl()) return toast('Only the host can change the video.', true);
-  $('youtube-submit').disabled = true;
-  try { const result = await request('media:youtube', { url: $('youtube-url').value }); applyState(result.state); $('youtube-url').value = ''; toast('YouTube video added. Hit play when everyone is ready.'); }
+  document.getElementById('youtube-submit').disabled = true;
+  try { const result = await request('media:youtube', { url: document.getElementById('youtube-url').value }); applyState(result.state); document.getElementById('youtube-url').value = ''; toast('YouTube video added. Hit play when everyone is ready.'); }
   catch (error) { toast(error.message, true); }
   finally { renderPermissions(); }
 }
-$('youtube-form').addEventListener('submit', event => { event.preventDefault(); addYouTube(); });
-$('upload-button').addEventListener('click', () => $('file-input').click());
-$('file-input').addEventListener('change', () => { if ($('file-input').files[0]) uploadFile($('file-input').files[0]); $('file-input').value = ''; });
-for (const eventName of ['dragenter', 'dragover']) $('upload-button').addEventListener(eventName, event => { event.preventDefault(); if (!room || canControl()) $('upload-button').classList.add('drag-over'); });
-for (const eventName of ['dragleave', 'drop']) $('upload-button').addEventListener(eventName, event => { event.preventDefault(); $('upload-button').classList.remove('drag-over'); });
-$('upload-button').addEventListener('drop', event => { if (event.dataTransfer.files[0] && !uploadRequest) uploadFile(event.dataTransfer.files[0]); });
+document.getElementById('youtube-form').addEventListener('submit', event => { event.preventDefault(); addYouTube(); });
+document.getElementById('upload-button').addEventListener('click', () => document.getElementById('file-input').click());
+document.getElementById('file-input').addEventListener('change', () => { if (document.getElementById('file-input').files[0]) uploadFile(document.getElementById('file-input').files[0]); document.getElementById('file-input').value = ''; });
+for (const eventName of ['dragenter', 'dragover']) document.getElementById('upload-button').addEventListener(eventName, event => { event.preventDefault(); if (!room || canControl()) document.getElementById('upload-button').classList.add('drag-over'); });
+for (const eventName of ['dragleave', 'drop']) document.getElementById('upload-button').addEventListener(eventName, event => { event.preventDefault(); document.getElementById('upload-button').classList.remove('drag-over'); });
+document.getElementById('upload-button').addEventListener('drop', event => { if (event.dataTransfer.files[0] && !uploadRequest) uploadFile(event.dataTransfer.files[0]); });
 
 function uploadFile(file) {
   if (!/\.(mp4|webm|ogv)$/i.test(file.name)) return toast('Choose an MP4, WebM or OGV video.', true);
@@ -436,12 +435,12 @@ function uploadFile(file) {
   const code = room.code;
   const xhr = new XMLHttpRequest(); uploadRequest = xhr;
   const data = new FormData(); data.append('video', file);
-  $('upload-progress').hidden = false; $('upload-meter').value = 0;
-  $('upload-label').textContent = `Uploading ${file.name}…`;
+  document.getElementById('upload-progress').hidden = false; document.getElementById('upload-meter').value = 0;
+  document.getElementById('upload-label').textContent = `Uploading ${file.name}…`;
   renderPermissions();
   xhr.open('POST', `/api/rooms/${code}/upload`); xhr.setRequestHeader('Authorization', `Bearer ${identity.token}`);
   xhr.upload.onprogress = event => {
-    if (event.lengthComputable) { const percent = Math.round(event.loaded / event.total * 100); $('upload-meter').value = percent; $('upload-label').textContent = percent === 100 ? 'Getting your video ready…' : `Uploading your video · ${percent}%`; }
+    if (event.lengthComputable) { const percent = Math.round(event.loaded / event.total * 100); document.getElementById('upload-meter').value = percent; document.getElementById('upload-label').textContent = percent === 100 ? 'Getting your video ready…' : `Uploading your video · ${percent}%`; }
   };
   xhr.onload = () => {
     let response;
@@ -451,10 +450,10 @@ function uploadFile(file) {
   };
   xhr.onerror = () => toast('Upload interrupted. Check your connection and try again.', true);
   xhr.onabort = () => toast('Upload cancelled.');
-  xhr.onloadend = () => { uploadRequest = null; $('upload-progress').hidden = true; renderPermissions(); };
+  xhr.onloadend = () => { uploadRequest = null; document.getElementById('upload-progress').hidden = true; renderPermissions(); };
   xhr.send(data);
 }
-$('cancel-upload').addEventListener('click', () => uploadRequest?.abort());
+document.getElementById('cancel-upload').addEventListener('click', () => uploadRequest?.abort());
 
 async function copyText(text, success) {
   try {
@@ -467,27 +466,27 @@ async function copyText(text, success) {
     toast(success);
   } catch (error) { toast(error.message || 'Copy failed. Select and copy the address manually.', true); }
 }
-$('copy-code').addEventListener('click', () => { if (room) copyText(room.code, 'Room code copied.'); });
-$('menu-copy-code').addEventListener('click', () => { if (room) copyText(room.code, 'Party code copied.'); });
-function updateInvite() { const url = new URL($('invite-address').value); url.searchParams.set('room', room.code); $('invite-url').textContent = url.href; }
+document.getElementById('copy-code').addEventListener('click', () => { if (room) copyText(room.code, 'Room code copied.'); });
+document.getElementById('menu-copy-code').addEventListener('click', () => { if (room) copyText(room.code, 'Party code copied.'); });
+function updateInvite() { const url = new URL(document.getElementById('invite-address').value); url.searchParams.set('room', room.code); document.getElementById('invite-url').textContent = url.href; }
 function showInvite() {
   if (!room) return;
   const local = ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
   const addresses = [...new Set(local && config.lanUrls.length ? config.lanUrls : [location.origin, ...config.lanUrls])];
-  $('invite-address').replaceChildren();
-  for (const address of addresses) { const option = document.createElement('option'); option.value = address; option.textContent = address; $('invite-address').append(option); }
-  updateInvite(); $('invite-dialog').showModal();
-  copyText($('invite-url').textContent, 'Invite link copied. Send it to your people.');
+  document.getElementById('invite-address').replaceChildren();
+  for (const address of addresses) { const option = document.createElement('option'); option.value = address; option.textContent = address; document.getElementById('invite-address').append(option); }
+  updateInvite(); document.getElementById('invite-dialog').showModal();
+  copyText(document.getElementById('invite-url').textContent, 'Invite link copied. Send it to your people.');
 }
-$('invite-button').addEventListener('click', showInvite);
-$('menu-invite').addEventListener('click', () => { $('party-dialog').close(); showInvite(); });
-$('invite-address').addEventListener('change', updateInvite);
-$('copy-invite-dialog').addEventListener('click', () => copyText($('invite-url').textContent, 'Invite link copied.'));
+document.getElementById('invite-button').addEventListener('click', showInvite);
+document.getElementById('menu-invite').addEventListener('click', () => { document.getElementById('party-dialog').close(); showInvite(); });
+document.getElementById('invite-address').addEventListener('change', updateInvite);
+document.getElementById('copy-invite-dialog').addEventListener('click', () => copyText(document.getElementById('invite-url').textContent, 'Invite link copied.'));
 
 fetch('/api/config').then(response => response.json()).then(data => {
   config = data;
   const mb = Math.round(config.maxUploadBytes / 1024 ** 2);
-  $('upload-formats').textContent = `MP4, WEBM, OGV · UP TO ${mb >= 1024 ? `${Math.round(mb / 1024)} GB` : `${mb} MB`}`;
+  document.getElementById('upload-formats').textContent = `MP4, WEBM, OGV · UP TO ${mb >= 1024 ? `${Math.round(mb / 1024)} GB` : `${mb} MB`}`;
 }).catch(() => {});
 renderRoom();
 const invitedCode = new URL(location.href).searchParams.get('room');

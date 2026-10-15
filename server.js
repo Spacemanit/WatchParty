@@ -16,7 +16,6 @@ export async function createPartyServer(options = {}) {
   const uploadDir = options.uploadDir || path.join(root, '.data', 'uploads', randomUUID());
   await mkdir(uploadDir, { recursive: true });
   const app = express();
-  app.disable('x-powered-by');
   const http = createServer(app);
   const io = new Server(http, { maxHttpBufferSize: 16_384, serveClient: true });
   const cleanFile = file => file?.path && rm(file.path, { force: true }).catch(error => console.warn('Could not remove an unused upload:', error.code));
