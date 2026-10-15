@@ -8,6 +8,8 @@ The original interface was checked in the in-app browser with two independent ta
 
 The wireframe/e-ink revision adds separate home/party views and a party-code menu, with responsive monochrome styles. All seven existing integration tests and JavaScript syntax checks pass. Static checks confirm every JavaScript control reference, SVG symbol and input label resolves to a unique page element. Browser visual/interaction verification of this revised layout was blocked by the browser's security policy; it still needs a normal-browser visual check.
 
+Chat adds six integration cases (13 tests total): room-scoped delivery, server-owned sender identity, late-join/reconnect history, duplicate retries, literal HTML text, complex emoji sequences, character/rate limits, bounded history, and ten simultaneous chat senders. The ten-client chat test also checks that messaging does not change playback sequence or playback revision. These are real Socket.IO protocol tests; the chat panel and emoji picker have not been visually verified in a browser because preview inspection remains unavailable.
+
 There is no continuous drift correction or latency tuning in this edition. **p99 < 250 ms propagation and < 500 ms drift after correction are not measured or claimed.** A later benchmark must separately measure actual command-to-player application and player drift on physical LAN devices, and record hardware, browser versions, Wi-Fi/Ethernet conditions, video bitrate and number of viewers.
 
 ## Expected failure behavior
@@ -29,6 +31,10 @@ There is no continuous drift correction or latency tuning in this edition. **p99
 | YouTube disallows embedding or video unavailable | Player displays an error and host can choose a new source. |
 | YouTube ads, buffering or suspended tabs differ | Playback can drift; this version does not continuously correct it. |
 | Server restarts | Rooms and session tokens are lost; users create/join a new room. |
+| Chat connection drops | Sending is disabled while disconnected; the current page keeps its unsent draft. Rejoining restores up to 100 recent messages. |
+| Chat acknowledgment is delayed/lost | A retry reuses its message ID; the last 400 accepted IDs per room are remembered to prevent duplicate broadcasts. |
+| Chat sender exceeds limits | Server rejects messages over 1,000 Unicode code points or more than 6 messages in 5 seconds; the draft remains available. |
+| A message contains HTML or emoji sequences | Rendered as plain text; emoji joiners, skin tones, flags and variation selectors are preserved. |
 | Host server goes offline | All clients lose service. Host-role transfer cannot move the server or its video files. |
 
 ## Manual LAN acceptance checklist
@@ -42,3 +48,5 @@ There is no continuous drift correction or latency tuning in this edition. **p99
 7. Confirm a guest cannot control playback, change the source or upload after role transfer.
 8. Try an invalid room code, unsupported file, cancelled upload, oversized file and server restart. Check visible messages and recovery paths.
 9. Repeat at a narrow mobile viewport and with keyboard-only navigation.
+10. Send text, emoji-only messages, multi-line messages and HTML-like text from both a host and guest. Confirm the other room receives none of them. Check the picker with mouse and keyboard, including Escape and arrow navigation.
+11. Scroll up in chat, receive new messages and use the unread button. Disconnect/reconnect with an unsent draft. Check history, retry after a failed send, and send enough messages to see the rate-limit error.

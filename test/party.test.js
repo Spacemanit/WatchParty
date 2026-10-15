@@ -168,3 +168,122 @@ test('room capacity, explicit leaving, isolation and expired sessions are handle
   assert.equal((await emit(host, 'room:snapshot')).ok, false);
 });
 
+test('chat delivers text and emojis with server-owned identities only to the sender’s room', async t => {
+  const { host, party, connect } = await fixture(t);
+  const guest = await connect();
+  const joined = await emit(guest, 'room:join', { code: party.state.code, name: 'Viewer' });
+  const outsider = await connect();
+  const other = await emit(outsider, 'room:create', { name: 'Other host' });
+  let leaked = 0;
+  outsider.on('chat:message', () => leaked++);
+  const received = new Promise(resolve => host.once('chat:message', resolve));
+  const text = 'That plot twist 😂🍿 👨‍👩‍👧‍👦 👍🏽 🇮🇳';
+  const sent = await emit(guest, 'chat:send', { clientId: 'chat-test-0001', text, name: 'Forged host', senderId: party.selfId, code: other.state.code });
+  assert.equal(sent.ok, true);
+  assert.equal(sent.message.name, 'Viewer');
+  assert.equal(sent.message.senderId, joined.selfId);
+  assert.equal(sent.message.text, text);
+  assert.equal(sent.message.sequence, 1);
+  assert.equal((await received).code, party.state.code);
+  assert.deepEqual((await emit(outsider, 'chat:history')).chat.messages, []);
+  assert.equal(leaked, 0);
+  assert.equal(JSON.stringify(sent.message).includes(joined.token), false);
+  assert.equal((await emit(host, 'room:snapshot')).state.playbackRevision, 0);
+  assert.equal((await emit(await connect(), 'chat:send', { clientId: 'chat-test-0002', text: 'Unjoined' })).ok, false);
+  await emit(guest, 'room:leave');
+  assert.equal((await emit(guest, 'chat:send', { clientId: 'chat-test-0003', text: 'Already left' })).ok, false);
+});
+
+test('chat history survives late joins and reconnects, and retries cannot duplicate a message', async t => {
+  const { host, party, connect } = await fixture(t);
+  const text = '<img src=x onerror=alert(1)>\nStill plain text 😂';
+  const first = await emit(host, 'chat:send', { clientId: 'chat-retry-0001', text });
+  const guest = await connect();
+  const joined = await emit(guest, 'room:join', { code: party.state.code, name: 'Viewer' });
+  assert.deepEqual(joined.chat.messages.map(item => item.text), [text]);
+  const sent = await emit(guest, 'chat:send', { clientId: 'chat-retry-0002', text: '❤️' });
+  guest.disconnect(); await delay(30);
+  const returning = await connect();
+  const resumed = await emit(returning, 'room:join', { code: party.state.code, token: joined.token });
+  assert.equal(resumed.chat.messages.length, 2);
+  assert.equal(resumed.chat.messages[1].id, sent.message.id);
+  let broadcasts = 0; host.on('chat:message', () => broadcasts++);
+  const retry = await emit(returning, 'chat:send', { clientId: 'chat-retry-0002', text: '❤️' });
+  assert.equal(retry.duplicate, true);
+  assert.equal(retry.message.id, sent.message.id);
+  assert.equal(broadcasts, 0);
+  assert.equal((await emit(host, 'chat:history')).chat.messages.length, 2);
+  assert.equal((await emit(returning, 'chat:send', { clientId: 'chat-retry-0002', text: 'Changed text' })).ok, false);
+  assert.equal(first.message.sequence, 1);
+});
+
+test('chat rejects invalid input, preserves Unicode emoji sequences, and enforces character limits', async t => {
+  const { host } = await fixture(t);
+  for (const payload of [
+    { clientId: 'chat-invalid-01', text: ' \n\t ' },
+    { clientId: 'chat-invalid-02', text: '\u0000\u0001' },
+    { clientId: 'chat-invalid-03', text: 'x'.repeat(1001) },
+    { clientId: 'chat-invalid-04', text: '😂'.repeat(1001) },
+    { clientId: 'chat-invalid-05', text: 42 },
+    { clientId: '<script>', text: 'Invalid ID' }
+  ]) assert.equal((await emit(host, 'chat:send', payload)).ok, false);
+  const cleaned = await emit(host, 'chat:send', { clientId: 'chat-clean-0001', text: '  Hello\u0000\r\n❤️ 👨‍👩‍👧‍👦 👍🏽  ' });
+  assert.equal(cleaned.message.text, 'Hello\n❤️ 👨‍👩‍👧‍👦 👍🏽');
+  const boundary = await emit(host, 'chat:send', { clientId: 'chat-clean-0002', text: '😂'.repeat(1000) });
+  assert.equal(boundary.ok, true);
+  assert.equal(Array.from(boundary.message.text).length, 1000);
+});
+
+test('chat rate limits follow a participant across reconnects while retries and other participants still work', async t => {
+  const { host, party, connect } = await fixture(t);
+  for (let index = 0; index < 6; index++) assert.equal((await emit(host, 'chat:send', { clientId: `chat-rate-000${index}`, text: `Message ${index}` })).ok, true);
+  assert.equal((await emit(host, 'chat:send', { clientId: 'chat-rate-0000', text: 'Message 0' })).duplicate, true);
+  const limited = await emit(host, 'chat:send', { clientId: 'chat-rate-0006', text: 'Too many' });
+  assert.equal(limited.ok, false);
+  assert.match(limited.error, /slow down/i);
+  host.disconnect(); await delay(30);
+  const resumed = await connect();
+  await emit(resumed, 'room:join', { code: party.state.code, token: party.token });
+  assert.equal((await emit(resumed, 'chat:send', { clientId: 'chat-rate-0007', text: 'Still too many' })).ok, false);
+  const guest = await connect();
+  await emit(guest, 'room:join', { code: party.state.code, name: 'Viewer' });
+  assert.equal((await emit(guest, 'chat:send', { clientId: 'chat-rate-0008', text: 'I can still chat' })).ok, true);
+});
+
+test('chat keeps bounded history and remembers retries of recently pruned messages', async t => {
+  const { host, server } = await fixture(t, { rooms: { chatLimit: 3 } });
+  for (let index = 0; index < 5; index++) await emit(host, 'chat:send', { clientId: `chat-bound-000${index}`, text: `Message ${index}` });
+  const history = (await emit(host, 'chat:history')).chat;
+  assert.equal(history.messages.length, 3);
+  assert.deepEqual(history.messages.map(message => message.sequence), [3, 4, 5]);
+  assert.equal(history.sequence, 5);
+  assert.equal((await emit(host, 'chat:send', { clientId: 'chat-bound-0000', text: 'Message 0' })).duplicate, true);
+  assert.equal((await emit(host, 'chat:history')).chat.messages.length, 3);
+  assert.equal([...server.rooms.rooms.values()][0].messages.length, 3);
+});
+
+test('ten concurrent chat participants see the same ordered messages without changing playback state', async t => {
+  const { host, party, connect } = await fixture(t);
+  const guests = await Promise.all(Array.from({ length: 9 }, () => connect()));
+  for (const [index, guest] of guests.entries()) await emit(guest, 'room:join', { code: party.state.code, name: `Viewer ${index}` });
+  const clients = [host, ...guests];
+  const before = (await emit(host, 'room:snapshot')).state;
+  const streams = clients.map(socket => new Promise((resolve, reject) => {
+    const messages = [];
+    const timeout = setTimeout(() => { socket.off('chat:message', collect); reject(new Error('Chat fan-out did not reach every participant.')); }, 2000);
+    function collect(event) {
+      messages.push(event.message);
+      if (messages.length === 10) { clearTimeout(timeout); socket.off('chat:message', collect); resolve(messages); }
+    }
+    socket.on('chat:message', collect);
+  }));
+  const results = await Promise.all(clients.map((socket, index) => emit(socket, 'chat:send', { clientId: `chat-group-000${index}`, text: `Together ${index} 🍿` })));
+  assert(results.every(result => result.ok));
+  const sequences = [...Array(10)].map((_, index) => index + 1);
+  for (const stream of await Promise.all(streams)) assert.deepEqual(stream.map(message => message.sequence), sequences);
+  const after = (await emit(host, 'room:snapshot')).state;
+  assert.equal(after.sequence, before.sequence);
+  assert.equal(after.playbackRevision, before.playbackRevision);
+  assert.equal((await emit(host, 'chat:history')).chat.messages.length, 10);
+});
+

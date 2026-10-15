@@ -19,6 +19,10 @@ let restoring = false;
 let sourceLoading = false;
 let playbackFailureId = null;
 let youtubeReadyTimer = null;
+const chat = new window.PartyChat({
+  request,
+  getContext: () => ({ roomCode: room?.code, selfId: identity?.selfId, connected: socket.connected && !restoring })
+});
 
 function readStorage(store, key, fallback = null) {
   try { return JSON.parse(store.getItem(key)) ?? fallback; } catch { return fallback; }
@@ -114,6 +118,7 @@ function adoptRoom(data) {
   saveStorage(sessionStorage, 'watchparty.session', savedSession);
   room = null;
   applyState(data.state, true);
+  chat.join(data.state.code, data.selfId, data.chat);
   const url = new URL(location.href); url.searchParams.set('room', room.code); history.replaceState(null, '', url);
 }
 
@@ -143,6 +148,7 @@ function renderPermissions() {
   $('source-permission').textContent = room ? isHost() ? 'HOST CONTROLS · THAT’S YOU' : 'YOUR HOST PICKS THE PICTURE' : 'YOUR VIDEO. YOUR CHOICE.';
   $('create-open').disabled = $('join-open').disabled = !socket.connected || restoring;
   $('leave-button').disabled = !socket.connected || restoring;
+  chat.refreshStatus();
 }
 
 function renderRoom() {
@@ -208,6 +214,7 @@ function resetParty() {
   for (const id of ['party-dialog', 'invite-dialog']) if ($(id).open) $(id).close();
   if (uploadRequest) uploadRequest.abort();
   room = null; identity = null; savedSession = null; pendingSource = null; pendingFile = null;
+  chat.reset();
   saveStorage(sessionStorage, 'watchparty.session', null);
   loadMedia(null);
   renderRoom();
@@ -235,6 +242,7 @@ socket.on('connect', async () => {
   }
 });
 socket.on('disconnect', () => {
+  chat.toggleEmoji(false);
   connection('offline', 'Reconnecting');
   video.pause(); if (ytReady) yt.pauseVideo();
   $('activity-text').textContent = 'Connection lost. Playback is paused here while we reconnect.';
@@ -246,6 +254,7 @@ socket.on('room:state', ({ state, activity }) => {
   applyState(state);
   if (activity) $('activity-text').textContent = activity;
 });
+socket.on('chat:message', ({ code, message }) => chat.receive(code, message));
 
 function clearPlayerError() { $('player-error').hidden = true; playbackFailureId = null; }
 function playerError(message) { $('player-error-text').textContent = message; $('player-error').hidden = false; }

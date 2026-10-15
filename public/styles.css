@@ -204,6 +204,62 @@ input[type=range]:disabled { opacity: .3; cursor: not-allowed; }
 .party-footnote { display: flex; align-items: center; gap: 13px; border-top: 1px dashed #b9b9b9; padding: 17px 4px 0; margin-top: 6px; }
 .party-footnote .ink-star { font-size: 34px; }
 .party-footnote p { font: italic 15px/1.5 var(--serif); margin: 0; }
+.room-column .guest-section { min-height: 0; }
+.room-column .member-list { max-height: 160px; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+.chat-panel { height: 396px; display: flex; flex-direction: column; border: 1.5px solid var(--rule); border-radius: 10px; background: var(--paper); margin-top: 8px; }
+.chat-panel .panel-heading { flex-shrink: 0; }
+.chat-state { font: 7px var(--mono); color: var(--secondary); letter-spacing: .4px; }
+.chat-scroll-wrap { position: relative; min-height: 0; flex: 1; }
+.chat-messages { display: flex; flex-direction: column; gap: 12px; height: 100%; overflow-y: auto; overflow-x: hidden; padding: 14px 12px; overscroll-behavior: contain; scrollbar-width: thin; }
+.chat-messages:focus-visible { outline-offset: -4px; }
+.chat-message { flex-shrink: 0; min-width: 0; width: 100%; }
+.chat-message-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; color: var(--secondary); font-size: 9px; margin-bottom: 5px; }
+.chat-message-meta > span { overflow-wrap: anywhere; }
+.chat-message-meta time { flex-shrink: 0; font: 7px var(--mono); }
+.chat-message-text { display: inline-block; max-width: 100%; white-space: pre-wrap; overflow-wrap: anywhere; word-break: break-word; padding: 8px 10px; margin: 0; background: var(--wash); border: 1px solid var(--light-rule); border-radius: 2px 8px 8px 8px; font-size: 12px; line-height: 1.6; font-family: var(--body), 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji'; }
+.chat-message-own .chat-message-text { background: var(--ink); color: var(--paper); border-color: var(--ink); border-radius: 8px 2px 8px 8px; }
+.chat-message-own { text-align: right; }
+.chat-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; flex-direction: column; text-align: center; padding: 18px 12px; pointer-events: none; }
+.chat-empty > svg { width: 25px; height: 25px; stroke-width: 1.2; color: #888; margin-bottom: 12px; }
+.chat-empty h3 { font: 17px var(--serif); margin: 0 0 8px; letter-spacing: -.2px; }
+.chat-empty p { color: var(--secondary); font-size: 10px; line-height: 1.7; margin: 0; }
+.chat-new-messages { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); background: var(--paper); color: var(--ink); border: 1px solid var(--rule); border-radius: 12px; padding: 5px 10px; font-size: 9px; white-space: nowrap; }
+.chat-form { position: relative; margin: 0 10px; border: 1px solid #aaa; border-radius: 5px; flex-shrink: 0; }
+.chat-form:focus-within { border-color: var(--ink); }
+.chat-form textarea { display: block; resize: none; width: 100%; height: 58px; min-height: 58px; color: var(--ink); background: var(--paper); border: 0; border-radius: 5px; padding: 10px 10px 4px; font: 12px/1.6 var(--body); outline: none; }
+.chat-form textarea::placeholder { color: #818181; font-size: 11px; }
+.chat-compose-actions { display: flex; align-items: center; gap: 8px; padding: 2px 5px 5px; }
+.chat-compose-actions .icon-button { width: 28px; height: 27px; padding: 5px; }
+.chat-compose-actions svg { height: 17px; width: 17px; }
+.chat-count { margin-left: auto; font: 8px var(--mono); color: var(--secondary); }
+.chat-count.over-limit { color: var(--ink); font-weight: 700; text-decoration: underline; text-decoration-style: wavy; }
+.chat-send { border: 1px solid var(--ink); border-radius: 4px; background: var(--ink); color: var(--paper); height: 27px; width: 30px; padding: 5px; display: grid; place-items: center; }
+.chat-send:disabled { opacity: .3; }
+.chat-send:hover:not(:disabled) { background: #444; }
+.chat-hint { margin: 7px 11px 10px; font-size: 8px; line-height: 1.6; color: var(--secondary); flex-shrink: 0; }
+.chat-hint.chat-error { color: var(--ink); font-size: 9px; }
+.emoji-picker { position: absolute; bottom: calc(100% + 7px); left: 0; right: 0; padding: 8px; border: 1px solid var(--rule); border-radius: 6px; background: var(--paper); z-index: 7; box-shadow: 2px 2px 0 var(--ink); }
+.emoji-heading { display: flex; align-items: center; justify-content: space-between; gap: 5px; padding: 0 2px 5px; }
+.emoji-heading > span { font: 7px var(--mono); letter-spacing: .5px; color: var(--secondary); }
+.emoji-heading .icon-button { height: 22px; width: 22px; padding: 4px; }
+.emoji-heading .icon-button svg { height: 12px; width: 12px; }
+.emoji-options { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.emoji-option { display: grid; place-items: center; padding: 3px 0; min-width: 0; height: 29px; border: 1px solid transparent; border-radius: 3px; background: var(--paper); font: 19px/1 'Segoe UI Emoji', 'Apple Color Emoji', 'Noto Color Emoji', sans-serif; }
+.emoji-option:hover, .emoji-option:focus-visible { background: var(--wash); border-color: var(--light-rule); }
+@media (max-width: 650px) {
+  .chat-panel { height: 430px; margin-top: 10px; }
+  .chat-messages { padding: 16px; }
+  .chat-message-meta { font-size: 10px; }
+  .chat-message-meta time { font-size: 8px; }
+  .chat-message-text { font-size: 13px; }
+  .chat-form { margin: 0 13px; }
+  .chat-form textarea { font-size: 16px; }
+  .chat-form textarea::placeholder { font-size: 12px; }
+  .chat-hint { margin-left: 14px; margin-right: 14px; font-size: 9px; }
+  .chat-count { font-size: 9px; }
+  .emoji-option { height: 34px; font-size: 23px; }
+}
 footer { display: flex; align-items: center; justify-content: space-between; gap: 15px; padding: 20px 0 22px; border-top: 1.5px solid var(--rule); font: 8px var(--mono); letter-spacing: .6px; color: var(--secondary); }
 .footer-dot { margin: 0 6px; }
 .footer-star { font-size: 17px; color: var(--ink); margin-left: 10px; vertical-align: middle; }

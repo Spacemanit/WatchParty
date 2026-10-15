@@ -104,7 +104,7 @@ export async function createPartyServer(options = {}) {
       binding = { code: room.code, id: member.id, token: member.token };
       socket.join(room.code);
       rooms.changed(room, `${member.name} joined the room.`);
-      return { state: rooms.snapshot(room), selfId: member.id, token: member.token };
+      return { state: rooms.snapshot(room), selfId: member.id, token: member.token, chat: rooms.chatHistory(room) };
     }
     function bound() {
       if (!binding) throw new PartyError('Join a room first.');
@@ -119,6 +119,13 @@ export async function createPartyServer(options = {}) {
       return attach(rooms.join(code, name, socket.id, token));
     });
     handle('room:snapshot', () => { const { room } = bound(); return { state: rooms.snapshot(room) }; });
+    handle('chat:history', () => { const { room } = bound(); return { chat: rooms.chatHistory(room) }; });
+    handle('chat:send', payload => {
+      bound();
+      const result = rooms.sendChat(binding.code, binding.token, payload);
+      if (!result.duplicate) io.to(binding.code).emit('chat:message', { code: binding.code, message: result.message });
+      return { message: result.message, duplicate: result.duplicate };
+    });
     handle('room:leave', () => {
       bound();
       const prior = binding;
