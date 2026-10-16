@@ -51,7 +51,7 @@ window.PartyChat = class PartyChat {
       const buttons = [...document.getElementById('emoji-options').children];
       const index = buttons.indexOf(document.activeElement);
       if (index < 0) return;
-      const shifts = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 7, ArrowUp: -7 };
+      const shifts = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: 6, ArrowUp: -6 };
       if (event.key in shifts) {
         event.preventDefault(); buttons[(index + shifts[event.key] + buttons.length) % buttons.length].focus();
       } else if (event.key === 'Home' || event.key === 'End') {
@@ -170,12 +170,15 @@ window.PartyChat = class PartyChat {
     document.getElementById('emoji-toggle').disabled = !joined;
     document.getElementById('chat-send').disabled = !joined || !context.connected || Boolean(this.sendingId) || !this.input.value.trim() || count > 1000;
     document.getElementById('chat-count').textContent = `${count} / 1000`;
+    document.getElementById('chat-count').hidden = count < 800;
     document.getElementById('chat-count').classList.toggle('over-limit', count > 1000);
     document.getElementById('chat-empty').hidden = this.messages.length > 0;
-    document.getElementById('chat-state').textContent = joined ? context.connected ? 'LIVE' : 'RECONNECTING' : 'ROOM ONLY';
-    const hint = this.error || (!joined ? 'Join a party to chat.' : !context.connected ? 'Reconnecting… your draft stays here.' : this.sendingId ? 'Sending…' : 'Enter to send · Shift+Enter for a new line');
+    document.getElementById('chat-state').textContent = 'Reconnecting…';
+    document.getElementById('chat-state').hidden = !joined || context.connected;
+    const hint = this.error || (!joined ? 'Join a party to chat.' : !context.connected ? 'Reconnecting… your draft is kept.' : this.sendingId ? 'Sending…' : 'Enter to send. Shift+Enter for a new line.');
     if (document.getElementById('chat-hint').textContent !== hint) document.getElementById('chat-hint').textContent = hint;
     document.getElementById('chat-hint').classList.toggle('chat-error', Boolean(this.error));
+    document.getElementById('chat-hint').classList.toggle('visually-hidden', !this.error && (!joined || context.connected));
   }
 
   renderMessages() {

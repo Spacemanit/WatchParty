@@ -18,6 +18,8 @@ let restoring = false;
 let sourceLoading = false;
 let playbackFailureId = null;
 let youtubeReadyTimer = null;
+let pendingTransferId = null;
+let addingYouTube = false;
 
 const DRIFT_TOLERANCE = 0.25;       // Seconds
 const CORRECTION_COOLDOWN = 1500;  // Milliseconds
@@ -48,6 +50,7 @@ document.getElementById('display-name').value = readStorage(localStorage, 'watch
 
 function icon(name) {
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('aria-hidden', 'true');
   const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
   use.setAttribute('href', `#i-${name}`);
   svg.append(use);
@@ -55,6 +58,9 @@ function icon(name) {
 }
 function setIcon(element, name) { element.replaceChildren(icon(name)); }
 function toast(message, error = false) {
+  const stack = document.getElementById('toast-stack');
+  const openDialogs = document.querySelectorAll('dialog[open]');
+  (openDialogs[openDialogs.length - 1] || document.body).append(stack);
   const item = document.createElement('div');
   item.className = `toast${error ? ' error' : ''}`;
   item.textContent = message;
@@ -85,34 +91,67 @@ function connection(status, text) { document.getElementById('connection').classN
 
 function openRoomDialog(nextMode, code = '') {
   mode = nextMode;
-  document.getElementById('create-tab').classList.toggle('active', mode === 'create');
-  document.getElementById('join-tab').classList.toggle('active', mode === 'join');
+  for (const name of ['create', 'join']) {
+    const tab = document.getElementById(`${name}-tab`);
+    tab.classList.toggle('active', mode === name);
+    tab.setAttribute('aria-selected', String(mode === name));
+    tab.tabIndex = mode === name ? 0 : -1;
+  }
+  document.getElementById('room-fields').setAttribute('aria-labelledby', `${mode}-tab`);
   document.getElementById('join-code-field').hidden = mode !== 'join';
   document.getElementById('join-code').required = mode === 'join';
   if (code) document.getElementById('join-code').value = code.toUpperCase();
-  document.getElementById('dialog-title').textContent = mode === 'create' ? 'Create a party.' : 'Enter the code.';
-  document.getElementById('room-submit').replaceChildren(document.createTextNode(mode === 'create' ? 'Create my party' : 'Join the fun'), icon('arrow'));
+  document.getElementById('dialog-title').textContent = mode === 'create' ? 'Create a party' : 'Join a party';
+  document.getElementById('room-submit').textContent = mode === 'create' ? 'Create party' : 'Join party';
   document.getElementById('room-error').hidden = true;
   if (!document.getElementById('room-dialog').open) document.getElementById('room-dialog').showModal();
+  if (matchMedia('(pointer: fine)').matches) {
+    document.getElementById(mode === 'join' && document.getElementById('display-name').value ? 'join-code' : 'display-name').focus();
+  }
 }
 
 document.getElementById('create-open').addEventListener('click', () => openRoomDialog('create'));
 document.getElementById('join-open').addEventListener('click', () => openRoomDialog('join'));
 document.getElementById('create-tab').addEventListener('click', () => openRoomDialog('create'));
 document.getElementById('join-tab').addEventListener('click', () => openRoomDialog('join'));
-document.getElementById('screen-start').addEventListener('click', () => room ? document.getElementById('youtube-url').focus() : openRoomDialog('create'));
+document.querySelector('.dialog-tabs').addEventListener('keydown', event => {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  const nextMode = event.key === 'Home' ? 'create' : event.key === 'End' ? 'join' : mode === 'create' ? 'join' : 'create';
+  openRoomDialog(nextMode);
+  document.getElementById(`${nextMode}-tab`).focus();
+});
+
+document.getElementById('screen-start').addEventListener('click', () => {
+  if (canControl()) document.getElementById('file-input').click();
+});
 document.getElementById('help-button').addEventListener('click', () => document.getElementById('help-dialog').showModal());
-document.getElementById('room-menu-open').addEventListener('click', () => { if (room) document.getElementById('party-dialog').showModal(); });
+document.getElementById('people-open').addEventListener('click', () => { if (room) document.getElementById('people-dialog').showModal(); });
+document.getElementById('youtube-open').addEventListener('click', () => {
+  if (!canControl()) return;
+  document.getElementById('youtube-error').hidden = true;
+  document.getElementById('youtube-dialog').showModal();
+  if (matchMedia('(pointer: fine)').matches) document.getElementById('youtube-url').focus();
+});
 document.querySelectorAll('[data-close]').forEach(button => button.addEventListener('click', () => document.getElementById(button.dataset.close).close()));
 document.querySelectorAll('dialog').forEach(dialog => dialog.addEventListener('click', event => {
   const rect = dialog.getBoundingClientRect();
   if (event.target === dialog && (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom)) dialog.close();
 }));
+document.querySelectorAll('dialog').forEach(dialog => dialog.addEventListener('close', () => {
+  const stack = document.getElementById('toast-stack');
+  if (!dialog.contains(stack)) return;
+  const openDialogs = document.querySelectorAll('dialog[open]');
+  (openDialogs[openDialogs.length - 1] || document.body).append(stack);
+}));
 document.getElementById('room-dialog').addEventListener('close', () => { if (!room) { pendingFile = null; pendingSource = null; } });
 
 document.getElementById('room-form').addEventListener('submit', async event => {
   event.preventDefault();
+  const submittingMode = mode;
   document.getElementById('room-submit').disabled = true;
+  document.getElementById('room-submit').textContent = mode === 'create' ? 'Creating…' : 'Joining…';
+  document.getElementById('create-tab').disabled = document.getElementById('join-tab').disabled = true;
   document.getElementById('room-error').hidden = true;
   try {
     const name = document.getElementById('display-name').value.trim();
@@ -120,11 +159,19 @@ document.getElementById('room-form').addEventListener('submit', async event => {
     saveStorage(localStorage, 'watchparty.name', name);
     adoptRoom(data);
     document.getElementById('room-dialog').close();
-    toast(mode === 'create' ? 'Your room is ready. Save your people a seat.' : 'You’re in. Make yourself comfortable.');
+    toast(submittingMode === 'create' ? 'Party created.' : 'Joined party.');
+    document.getElementById('party-title').focus();
     if (pendingFile && isHost()) { const file = pendingFile; pendingFile = null; uploadFile(file); }
     if (pendingSource && isHost()) { pendingSource = null; addYouTube(); }
-  } catch (error) { document.getElementById('room-error').textContent = error.message; document.getElementById('room-error').hidden = false; }
-  finally { document.getElementById('room-submit').disabled = false; }
+  } catch (error) {
+    document.getElementById('room-error').textContent = error.message;
+    document.getElementById('room-error').hidden = false;
+    document.getElementById(mode === 'join' ? 'join-code' : 'display-name').focus();
+  } finally {
+    document.getElementById('room-submit').disabled = false;
+    document.getElementById('room-submit').textContent = mode === 'create' ? 'Create party' : 'Join party';
+    document.getElementById('create-tab').disabled = document.getElementById('join-tab').disabled = false;
+  }
 });
 
 function adoptRoom(data) {
@@ -150,95 +197,110 @@ function applyState(state, force = false) {
 function renderPermissions() {
   const controllable = canControl();
   const hasMedia = Boolean(room?.media);
-  document.getElementById('play-button').disabled = !controllable || !hasMedia || sourceLoading || !document.getElementById('player-error').hidden;
-  document.getElementById('seek').disabled = !controllable || !hasMedia || sourceLoading || !duration() || !document.getElementById('player-error').hidden;
-  document.getElementById('upload-button').disabled = Boolean(room && !controllable) || Boolean(uploadRequest);
-  document.getElementById('youtube-url').disabled = Boolean(room && !controllable);
-  document.getElementById('youtube-submit').disabled = Boolean(room && !controllable);
-  document.getElementById('mute-button').disabled = !hasMedia;
-  document.getElementById('volume').disabled = !hasMedia;
+  const playerFailed = !document.getElementById('player-error').hidden;
+  document.getElementById('play-button').disabled = !controllable || !hasMedia || sourceLoading || playerFailed;
+  document.getElementById('seek').disabled = !controllable || !hasMedia || sourceLoading || !duration() || playerFailed;
+  document.getElementById('upload-button').disabled = !controllable || Boolean(uploadRequest);
+  for (const id of ['youtube-open', 'youtube-url', 'youtube-submit']) document.getElementById(id).disabled = !controllable || Boolean(uploadRequest) || addingYouTube;
+  document.getElementById('source-actions').hidden = !isHost();
+  document.querySelector('.source-panel').hidden = !isHost() && !uploadRequest;
+  document.getElementById('screen-start').hidden = !isHost();
+  document.getElementById('screen-start').disabled = !controllable;
+  for (const id of ['mute-button', 'volume', 'fullscreen-button']) document.getElementById(id).disabled = !hasMedia;
   document.getElementById('invite-button').disabled = !room;
   document.getElementById('copy-code').disabled = !room;
-  document.getElementById('control-label').replaceChildren(icon('crown'), document.createTextNode(isHost() ? 'YOU CONTROL PLAYBACK' : 'HOST CONTROLS PLAYBACK'));
-  document.getElementById('source-permission').textContent = room ? isHost() ? 'HOST CONTROLS · THAT’S YOU' : 'YOUR HOST PICKS THE PICTURE' : 'YOUR VIDEO. YOUR CHOICE.';
+  document.getElementById('control-label').textContent = isHost() ? 'You control playback.' : 'The host controls playback.';
   document.getElementById('create-open').disabled = document.getElementById('join-open').disabled = !socket.connected || restoring;
-  document.getElementById('leave-button').disabled = !socket.connected || restoring;
+  document.getElementById('leave-button').disabled = document.getElementById('confirm-leave').disabled = !socket.connected || restoring;
+  document.getElementById('confirm-transfer').disabled = !controllable || !room?.members.some(member => member.id === pendingTransferId && member.online);
+  if (room && !isHost() && document.getElementById('youtube-dialog').open) document.getElementById('youtube-dialog').close();
   chat.refreshStatus();
 }
 
 function renderRoom() {
   document.getElementById('home-view').hidden = Boolean(room);
   document.getElementById('party-view').hidden = !room;
-  document.getElementById('lobby-actions').hidden = Boolean(room);
   document.getElementById('room-actions').hidden = !room;
-  document.getElementById('heading-description').textContent = room ? isHost() ? 'Your room. Your people. You have the controls.' : 'You’re in good company. Settle in.' : 'Different places. One movie night.';
-  document.getElementById('room-code').textContent = room?.code || '— — — — — —';
-  document.getElementById('room-code').classList.toggle('empty-code', !room);
+  document.getElementById('room-code').textContent = room?.code || '';
   const members = room?.members || [];
   const host = members.find(member => member.id === room?.hostId);
   const title = host ? `${host.name}’s party` : 'Your party';
   document.getElementById('party-title').textContent = title;
-  document.getElementById('menu-title').textContent = title;
-  document.getElementById('menu-room-code').textContent = room?.code || '';
-  document.getElementById('menu-members').replaceChildren();
-  for (const member of members) {
-    const item = document.createElement('span');
-    item.className = `popup-member${member.online ? '' : ' offline'}`;
-    item.textContent = `${member.name}${member.id === room.hostId ? ' · Host' : ''}${member.id === identity?.selfId ? ' · You' : ''}${member.online ? '' : ' · Reconnecting'}`;
-    document.getElementById('menu-members').append(item);
-  }
+  document.title = room ? `${title} · Watch Party` : 'Watch Party';
   const online = members.filter(member => member.online).length;
-  document.getElementById('member-count').textContent = String(members.length).padStart(2, '0');
-  document.getElementById('online-count').textContent = `${online} ONLINE`;
-  document.getElementById('empty-guests').hidden = Boolean(room);
-  document.getElementById('invite-description').textContent = room ? 'Share a code. Save someone a seat.' : 'Good nights start with good company.';
-  document.getElementById('room-bottom-text').textContent = room ? `${online} ${online === 1 ? 'person' : 'people'}. One shared screen.` : 'A private space for your people.';
-  document.getElementById('member-list').replaceChildren();
+  document.getElementById('member-count').textContent = String(members.length);
+  document.getElementById('online-count').textContent = online === members.length ? `${online} online` : `${online} of ${members.length} online`;
+  const list = document.getElementById('member-list');
+  const focusedMemberId = document.activeElement?.closest?.('[data-member-id]')?.dataset.memberId;
+  list.replaceChildren();
   for (const member of members) {
-    const row = document.createElement('div'); row.className = `member${member.online ? '' : ' member-offline'}`;
-    const avatar = document.createElement('div'); avatar.className = 'member-avatar'; avatar.textContent = Array.from(member.name)[0].toUpperCase();
+    const row = document.createElement('div'); row.className = `member${member.online ? '' : ' member-offline'}`; row.dataset.memberId = member.id;
+    const avatar = document.createElement('div'); avatar.className = 'member-avatar'; avatar.textContent = Array.from(member.name)[0].toUpperCase(); avatar.setAttribute('aria-hidden', 'true');
     const copy = document.createElement('div'); copy.className = 'member-copy';
     const name = document.createElement('div'); name.className = 'member-name'; name.textContent = member.name;
     if (member.id === identity?.selfId) { const you = document.createElement('small'); you.textContent = '(you)'; name.append(you); }
-    const status = document.createElement('div'); status.className = 'member-status'; status.textContent = member.online ? 'In the room' : 'Reconnecting…';
+    const status = document.createElement('div'); status.className = 'member-status'; status.textContent = member.online ? 'Connected' : 'Reconnecting…';
     copy.append(name, status); row.append(avatar, copy);
-    if (member.id === room.hostId) { const role = document.createElement('span'); role.className = 'member-role'; role.append(icon('crown'), 'HOST'); row.append(role); }
+    if (member.id === room.hostId) { const role = document.createElement('span'); role.className = 'member-role'; role.textContent = 'Host'; row.append(role); }
     else if (canControl() && member.online) {
-      const transfer = document.createElement('button'); transfer.className = 'transfer-button'; transfer.textContent = 'Make host'; transfer.setAttribute('aria-label', `Make ${member.name} the host`);
-      transfer.addEventListener('click', async () => {
-        transfer.disabled = true;
-        try { await request('host:transfer', { memberId: member.id }); toast(`${member.name} now has the controls.`); }
-        catch (error) { toast(error.message, true); transfer.disabled = false; }
-      }); row.append(transfer);
+      const transfer = document.createElement('button'); transfer.type = 'button'; transfer.className = 'transfer-button'; transfer.textContent = 'Make host'; transfer.setAttribute('aria-label', `Make ${member.name} the host`);
+      transfer.addEventListener('click', () => {
+        pendingTransferId = member.id;
+        document.getElementById('transfer-description').textContent = `${member.name} will control playback and choose videos. You will become a viewer.`;
+        renderPermissions();
+        document.getElementById('transfer-dialog').showModal();
+      });
+      row.append(transfer);
     }
-    document.getElementById('member-list').append(row);
+    list.append(row);
+  }
+  if (focusedMemberId && document.getElementById('people-dialog').open) {
+    const row = [...list.children].find(item => item.dataset.memberId === focusedMemberId);
+    (row?.querySelector('button') || document.querySelector('[data-close="people-dialog"]')).focus();
   }
   document.getElementById('now-playing').hidden = !room?.media;
   document.getElementById('media-title').textContent = room?.media?.title || '';
-  document.getElementById('media-type').textContent = room?.media?.kind === 'youtube' ? 'YOUTUBE' : 'LOCAL VIDEO';
-  document.getElementById('source-badge').textContent = room?.media ? room.playing ? 'PLAYING TOGETHER' : 'READY WHEN YOU ARE' : 'WAITING FOR A VIDEO';
-  document.getElementById('screen-note').textContent = room ? isHost() ? 'You have the controls. Everyone follows your play, pause and seek.' : 'Your host controls the picture. Volume is all yours.' : 'One host. A shared screen. A proper movie night.';
-  document.getElementById('screen-start').textContent = room ? isHost() ? 'Choose your first video ↓' : 'Your host is choosing the video' : 'Create a party to begin';
-  document.getElementById('screen-start').disabled = Boolean(room && !isHost());
+  document.getElementById('empty-player-message').textContent = isHost() ? 'Add a video to start.' : 'Waiting for the host to add a video.';
   setIcon(document.getElementById('play-button'), room?.playing ? 'pause' : 'play');
   document.getElementById('play-button').setAttribute('aria-label', room?.playing ? 'Pause for everyone' : 'Play for everyone');
   renderPermissions();
 }
 
 function resetParty() {
-  for (const id of ['party-dialog', 'invite-dialog']) if (document.getElementById(id).open) document.getElementById(id).close();
+  for (const id of ['people-dialog', 'invite-dialog', 'youtube-dialog', 'leave-dialog', 'transfer-dialog']) if (document.getElementById(id).open) document.getElementById(id).close();
   if (uploadRequest) uploadRequest.abort();
-  room = null; identity = null; savedSession = null; pendingSource = null; pendingFile = null;
+  room = null; identity = null; savedSession = null; pendingSource = null; pendingFile = null; pendingTransferId = null;
   chat.reset();
   saveStorage(sessionStorage, 'watchparty.session', null);
   loadMedia(null);
   renderRoom();
-  document.getElementById('activity-text').textContent = 'Your next movie night starts here.';
+  document.getElementById('activity-text').textContent = '';
   const url = new URL(location.href); url.searchParams.delete('room'); history.replaceState(null, '', url);
+  document.getElementById('create-open').focus();
 }
-document.getElementById('leave-button').addEventListener('click', async () => {
-  try { await request('room:leave'); resetParty(); toast('You left the room. Until the next movie night.'); }
+function confirmLeave() {
+  if (!room) return;
+  document.getElementById('leave-description').textContent = isHost() && room.members.some(member => member.online && member.id !== identity.selfId) ? 'Playback will stop for you. Another participant will become the host.' : 'Playback will stop for you.';
+  document.getElementById('leave-dialog').showModal();
+}
+document.getElementById('leave-button').addEventListener('click', confirmLeave);
+document.getElementById('brand-home').addEventListener('click', event => { if (room) { event.preventDefault(); confirmLeave(); } });
+document.getElementById('confirm-leave').addEventListener('click', async () => {
+  document.getElementById('confirm-leave').disabled = true;
+  try { await request('room:leave'); resetParty(); toast('Left party.'); }
   catch (error) { toast(error.message, true); }
+  finally { renderPermissions(); }
+});
+document.getElementById('confirm-transfer').addEventListener('click', async () => {
+  if (!canControl() || !pendingTransferId) return;
+  document.getElementById('confirm-transfer').disabled = true;
+  try {
+    await request('host:transfer', { memberId: pendingTransferId });
+    document.getElementById('transfer-dialog').close();
+    toast('Host transferred.');
+    if (document.getElementById('people-dialog').open) document.querySelector('[data-close="people-dialog"]').focus();
+  } catch (error) { toast(error.message, true); }
+  finally { renderPermissions(); }
 });
 
 socket.on('connect', async () => {
@@ -247,7 +309,7 @@ socket.on('connect', async () => {
     restoring = true; renderPermissions();
     try {
       const result = await request('room:join', { code: savedSession.code, token: savedSession.token });
-      adoptRoom(result); document.getElementById('activity-text').textContent = 'Back in the room. Your place was saved.';
+      adoptRoom(result); document.getElementById('activity-text').textContent = 'Reconnected to the party.';
     } catch (error) {
       if (!socket.connected) return;
       const previousCode = savedSession.code;
@@ -418,7 +480,7 @@ document.getElementById('play-button').addEventListener('click', () => {
 });
 document.getElementById('seek').addEventListener('change', () => sendPlayback('seek', duration() * Number(document.getElementById('seek').value) / 1000));
 document.getElementById('seek').addEventListener('input', () => { document.getElementById('current-time').textContent = time(duration() * Number(document.getElementById('seek').value) / 1000); });
-function updateMute() { setIcon(document.getElementById('mute-button'), video.muted ? 'muted' : 'volume'); document.getElementById('mute-button').setAttribute('aria-label', video.muted ? 'Unmute your audio' : 'Mute your audio'); }
+function updateMute() { setIcon(document.getElementById('mute-button'), video.muted ? 'muted' : 'volume'); document.getElementById('mute-button').setAttribute('aria-label', video.muted ? 'Unmute your audio' : 'Mute your audio'); document.getElementById('mute-button').setAttribute('aria-pressed', String(video.muted)); }
 document.getElementById('mute-button').addEventListener('click', () => { video.muted = !video.muted; if (ytReady) video.muted ? yt.mute() : yt.unMute(); updateMute(); });
 document.getElementById('volume').addEventListener('input', () => { video.volume = Number(document.getElementById('volume').value) / 100; video.muted = false; if (ytReady) { yt.setVolume(Number(document.getElementById('volume').value)); yt.unMute(); } updateMute(); });
 document.getElementById('fullscreen-button').addEventListener('click', async () => {
@@ -432,6 +494,7 @@ setInterval(() => {
   if (document.activeElement !== document.getElementById('seek')) {
     document.getElementById('current-time').textContent = time(position());
     document.getElementById('seek').value = length ? Math.min(1000, position() / length * 1000) : 0;
+    document.getElementById('seek').setAttribute('aria-valuetext', `${time(position())} of ${time(length)}`);
   }
   document.getElementById('seek').disabled = !canControl() || sourceLoading || !length || !document.getElementById('player-error').hidden;
 }, 250);
@@ -439,10 +502,27 @@ setInterval(() => {
 async function addYouTube() {
   if (!room) { pendingSource = 'youtube'; openRoomDialog('create'); return; }
   if (!canControl()) return toast('Only the host can change the video.', true);
-  document.getElementById('youtube-submit').disabled = true;
-  try { const result = await request('media:youtube', { url: document.getElementById('youtube-url').value }); applyState(result.state); document.getElementById('youtube-url').value = ''; toast('YouTube video added. Hit play when everyone is ready.'); }
-  catch (error) { toast(error.message, true); }
-  finally { renderPermissions(); }
+  if (addingYouTube) return;
+  addingYouTube = true;
+  document.getElementById('youtube-submit').textContent = 'Adding…';
+  document.getElementById('youtube-error').hidden = true;
+  renderPermissions();
+  try {
+    const result = await request('media:youtube', { url: document.getElementById('youtube-url').value });
+    applyState(result.state);
+    document.getElementById('youtube-url').value = '';
+    document.getElementById('youtube-dialog').close();
+    toast('YouTube video added.');
+  } catch (error) {
+    document.getElementById('youtube-error').textContent = error.message;
+    document.getElementById('youtube-error').hidden = false;
+    if (!document.getElementById('youtube-dialog').open) toast(error.message, true);
+  } finally {
+    addingYouTube = false;
+    document.getElementById('youtube-submit').textContent = 'Add video';
+    renderPermissions();
+    if (!document.getElementById('youtube-error').hidden && document.getElementById('youtube-dialog').open) document.getElementById('youtube-url').focus();
+  }
 }
 document.getElementById('youtube-form').addEventListener('submit', event => { event.preventDefault(); addYouTube(); });
 document.getElementById('upload-button').addEventListener('click', () => document.getElementById('file-input').click());
@@ -471,7 +551,7 @@ function uploadFile(file) {
   xhr.onload = () => {
     let response;
     try { response = JSON.parse(xhr.responseText); } catch { response = { error: 'The upload failed. Try again.' }; }
-    if (xhr.status >= 200 && xhr.status < 300 && response.ok) { if (room?.code === code) applyState(response.state); toast('Your video is ready for its audience.'); }
+    if (xhr.status >= 200 && xhr.status < 300 && response.ok) { if (room?.code === code) applyState(response.state); toast('Video added.'); }
     else toast(response.error || 'The upload failed. Try again.', true);
   };
   xhr.onerror = () => toast('Upload interrupted. Check your connection and try again.', true);
@@ -493,7 +573,6 @@ async function copyText(text, success) {
   } catch (error) { toast(error.message || 'Copy failed. Select and copy the address manually.', true); }
 }
 document.getElementById('copy-code').addEventListener('click', () => { if (room) copyText(room.code, 'Room code copied.'); });
-document.getElementById('menu-copy-code').addEventListener('click', () => { if (room) copyText(room.code, 'Party code copied.'); });
 function updateInvite() { const url = new URL(document.getElementById('invite-address').value); url.searchParams.set('room', room.code); document.getElementById('invite-url').textContent = url.href; }
 function showInvite() {
   if (!room) return;
@@ -501,18 +580,17 @@ function showInvite() {
   const addresses = [...new Set(local && config.lanUrls.length ? config.lanUrls : [location.origin, ...config.lanUrls])];
   document.getElementById('invite-address').replaceChildren();
   for (const address of addresses) { const option = document.createElement('option'); option.value = address; option.textContent = address; document.getElementById('invite-address').append(option); }
+  document.getElementById('invite-address-field').hidden = addresses.length < 2;
   updateInvite(); document.getElementById('invite-dialog').showModal();
-  copyText(document.getElementById('invite-url').textContent, 'Invite link copied. Send it to your people.');
 }
 document.getElementById('invite-button').addEventListener('click', showInvite);
-document.getElementById('menu-invite').addEventListener('click', () => { document.getElementById('party-dialog').close(); showInvite(); });
 document.getElementById('invite-address').addEventListener('change', updateInvite);
 document.getElementById('copy-invite-dialog').addEventListener('click', () => copyText(document.getElementById('invite-url').textContent, 'Invite link copied.'));
 
 fetch('/api/config').then(response => response.json()).then(data => {
   config = data;
   const mb = Math.round(config.maxUploadBytes / 1024 ** 2);
-  document.getElementById('upload-formats').textContent = `MP4, WEBM, OGV · UP TO ${mb >= 1024 ? `${Math.round(mb / 1024)} GB` : `${mb} MB`}`;
+  document.getElementById('upload-formats').textContent = `MP4, WebM, OGV. Up to ${mb >= 1024 ? `${Math.round(mb / 1024)} GB` : `${mb} MB`}.`;
 }).catch(() => { });
 renderRoom();
 const invitedCode = new URL(location.href).searchParams.get('room');

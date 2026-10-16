@@ -1,6 +1,8 @@
 # Watch Party
 
-A host-run watch party with a white-paper, black-ink interface based on the supplied wireframe. A home screen offers Create/Join tiles; the party screen pairs a video player with room details and participants, plus code/invitation popups. Plain HTML, CSS and browser JavaScript; Express, Socket.IO and HTTP video streaming on Node.js. No frontend build step or database.
+A host-run watch party with a white-paper, black-ink interface, Courier Prime headings and Hanken Grotesk body text. The centered home screen offers Create and Join dialogs. In a party, chat sits beside the video on desktop and below it on phones; participants and host transfer live in a People drawer. Plain HTML, CSS and browser JavaScript; Express, Socket.IO and HTTP video streaming on Node.js. No frontend build step or database.
+
+See [the usability redesign report](docs/UX_REDESIGN.md) for design decisions, removals, benefits, tradeoffs and verification limits.
 
 ## Run
 
@@ -36,7 +38,7 @@ node server.js
 - Reconnect sessions stay available for 10 minutes. A recovered session preserves its name/identity; explicitly leaving removes it. Rooms are limited to 20 members, including temporarily disconnected members. Empty rooms expire when their last session is removed.
 - File uploads require the connected host's room token. Media access requires a participant token. Uploaded paths and tokens are not included in public room snapshots.
 
-Deferred by scope: movie discovery/recommendations and filters/search, standalone reactions, playlists, polls, continuous playback drift detection/correction, clock synchronization, and latency optimization. This edition does not claim p99 latency or drift targets.
+Local uploads include clock calibration and local playback drift checks. YouTube drift correction and latency optimization remain deferred, along with movie discovery/recommendations, filters/search, standalone reactions, playlists and polls. This edition does not claim p99 latency or drift targets.
 
 ## How it works
 
@@ -44,7 +46,7 @@ Deferred by scope: movie discovery/recommendations and filters/search, standalon
 
 Socket.IO sends small commands and room snapshots. Uploaded files travel through a multipart HTTP endpoint and are streamed over HTTP, rather than broadcasting whole videos over Socket.IO. YouTube videos load through the embedded player. The frontend uses the same custom controls for both player types.
 
-Playback position is anchored to the server's timestamp. A play/pause/seek updates that anchor; late joiners receive the calculated current position. Clients do **not** continuously correct playback position. Browser buffering, different YouTube ads, suspended tabs or network delay can therefore cause drift. YouTube embedding needs internet access and an HTTP-served page; opening the HTML directly as a local file is unsupported.
+Playback position is anchored to the server's timestamp. A play/pause/seek updates that anchor; late joiners receive the calculated current position. Local uploads use periodic clock calibration and player drift checks, with readiness checks and a correction cooldown. YouTube has no continuous drift correction. Browser buffering, different YouTube ads, suspended tabs or network delay can still affect synchronization; correction targets have not been benchmarked. YouTube embedding needs internet access and an HTTP-served page; opening the HTML directly as a local file is unsupported.
 
 Room state and chat history are in memory. Restarting the server ends all rooms, clears their messages, and invalidates sessions. Files live under ignored `.data/uploads/`; replaced sources and expired rooms are cleaned up, and this process's upload directory is removed on a graceful shutdown. A forced crash can leave old upload directories on disk; remove those only while the server is stopped.
 
@@ -67,7 +69,7 @@ npm run check
 npm test
 ```
 
-The integration suite starts real HTTP/Socket.IO servers on temporary ports. It checks 10 concurrent clients, command fan-out and ordering, permissions, late joins, reconnection identity, host transfer/failover, media replacement, room isolation/capacity/expiry, upload errors, authenticated streams and HTTP range/HEAD responses. Chat checks cover room isolation, sender identity, Unicode emoji sequences, length/rate limits, retry deduplication, bounded history, reconnects, and ordered messages across 10 simultaneous participants. Test upload bytes are synthetic; browser playback requires a real playable video.
+The 35-test suite includes real HTTP/Socket.IO servers on temporary ports. It checks 10 concurrent clients, command fan-out and ordering, permissions, late joins, reconnection identity, host transfer/failover, media replacement, room isolation/capacity/expiry, upload errors, authenticated streams and HTTP range/HEAD responses. Chat checks cover room isolation, sender identity, Unicode emoji sequences, length/rate limits, retry deduplication, bounded history, reconnects, and ordered messages across 10 simultaneous participants. Nine interface tests execute the actual frontend against a simulated DOM to check dialogs, host permissions, explicit invite copying, keyboard emoji selection and error recovery. Test upload bytes are synthetic; browser playback requires a real playable video. DOM simulations do not verify rendering or native browser accessibility behavior.
 
 See [TESTING.md](TESTING.md) for test conditions, failure behavior and the manual multi-device checklist. No latency benchmark is claimed by this first edition.
 
