@@ -26,6 +26,7 @@ node server.js
 
 - Create/join rooms using six-character codes or invite links; display names and a live participant list.
 - Host-uploaded MP4, WebM and OGV files, streamed from the server's local disk. HTTP range requests support seeking without downloading the full file first. The default file-size limit is 2 GB. Browser codec support still applies; H.264/AAC MP4 is the most practical starting format.
+- MP4 uploads with empty H.264 keyframe indexes are repaired from the encoded frame headers before being shared. Encoded video/audio bytes are preserved, and the original file on your computer is untouched. Files with an index that cannot be repaired show an upload error; re-export those files as H.264/AAC MP4.
 - YouTube links using the official IFrame API. Each guest streams directly from YouTube. Unavailable videos, disabled embedding, loading failures and browser autoplay restrictions have visible handling.
 - Host-only play, pause, seek and source selection, validated on the server. Guest volume/mute and fullscreen are local controls.
 - Server-ordered commands, per-video IDs to reject controls for a replaced source, and room state snapshots for late arrivals/reconnects.

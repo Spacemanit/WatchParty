@@ -94,6 +94,28 @@ test('manual transfer enforces the new host and disconnected hosts are replaced 
   assert.equal((await emit(host, 'media:youtube', { url: 'https://youtu.be/dQw4w9WgXcQ' })).ok, true);
 });
 
+test('a participant joining after an empty host grace period gets control and keeps it when the old host returns', async t => {
+  const { server, host, party, connect } = await fixture(t, { rooms: { graceMs: 20 } });
+  const disconnected = new Promise(resolve => server.io.sockets.sockets.get(host.id).once('disconnect', resolve));
+  host.disconnect();
+  await disconnected;
+  await delay(50); // Let the grace callback run with no online replacement.
+
+  const guest = await connect();
+  const joined = await emit(guest, 'room:join', { code: party.state.code, name: 'Late guest' });
+  assert.equal(joined.ok, true);
+  assert.equal(joined.state.hostId, joined.selfId);
+  const selected = await emit(guest, 'media:youtube', { url: 'https://youtu.be/dQw4w9WgXcQ' });
+  assert.equal(selected.ok, true);
+  assert.equal((await emit(guest, 'playback:action', { mediaId: selected.state.media.id, action: 'play', position: 0 })).ok, true);
+
+  const returning = await connect();
+  const restored = await emit(returning, 'room:join', { code: party.state.code, token: party.token });
+  assert.equal(restored.selfId, party.selfId);
+  assert.equal(restored.state.hostId, joined.selfId);
+  assert.equal((await emit(returning, 'media:youtube', { url: 'https://youtu.be/dQw4w9WgXcQ' })).ok, false);
+});
+
 test('uploads require a host; streams support ranges, suffix ranges, HEAD and authorization', async t => {
   const { base, host, party, connect } = await fixture(t);
   const guest = await connect();

@@ -18,6 +18,22 @@ let restoring = false;
 let sourceLoading = false;
 let playbackFailureId = null;
 let youtubeReadyTimer = null;
+
+const DRIFT_TOLERANCE = 0.25;       // Seconds
+const CORRECTION_COOLDOWN = 1500;  // Milliseconds
+const LOG_DRIFT = true;
+
+let clockOffsetMs = null;
+let clockCalibratedAt = 0;
+let syncGeneration = 0;
+let calibratingGeneration = null;
+
+let syncTimer = null;
+let clockTimer = null;
+let lastCorrectionAt = -Infinity;
+let lastSyncMediaId = null;
+let lastSyncRevision = null;
+let outOfSyncChecks = 0;
 const chat = new window.PartyChat({
   request,
   getContext: () => ({ roomCode: room?.code, selfId: identity?.selfId, connected: socket.connected && !restoring })
@@ -333,7 +349,9 @@ function applyPlayback() {
   const target = Math.max(0, room.position);
   if (room.media.kind === 'file') {
     if (!video.readyState) return;
-    video.currentTime = Math.min(target, Number.isFinite(video.duration) ? video.duration : target);
+    const nextPosition = Math.min(target, Number.isFinite(video.duration) ? video.duration : target);
+    // Reassigning currentTime starts a seek, even when the player is already aligned.
+    if (Math.abs(video.currentTime - nextPosition) > 0.05) video.currentTime = nextPosition;
     if (room.playing) {
       const id = currentMediaId;
       video.play().then(() => { if (id === currentMediaId) document.getElementById('playback-gate').hidden = true; }).catch(error => {
@@ -369,7 +387,7 @@ video.addEventListener('ended', () => { if (canControl() && room?.playing) sendP
 document.getElementById('retry-player').addEventListener('click', () => { if (room?.media) loadMedia(room.media); });
 document.getElementById('enable-playback').addEventListener('click', async () => {
   if (!room?.media) return;
-  if (room.media.kind === 'file') video.play().catch(() => {});
+  if (room.media.kind === 'file') video.play().catch(() => { });
   else if (ytReady) yt.playVideo();
   document.getElementById('playback-gate').hidden = true;
   try { const result = await request('room:snapshot'); applyState(result.state, true); }
@@ -378,17 +396,25 @@ document.getElementById('enable-playback').addEventListener('click', async () =>
 
 async function sendPlayback(action, target = position()) {
   if (!canControl() || !room?.media) return;
+  if (LOG_DRIFT) console.log('Playback command', { action, position: target, localPosition: position(), roomPosition: room.position });
   try { const result = await request('playback:action', { action, position: target, mediaId: room.media.id }); applyState(result.state); }
   catch (error) { toast(error.message, true); }
 }
 document.getElementById('play-button').addEventListener('click', () => {
-  if (!canControl()) return;
+  if (!canControl() || !room?.media || sourceLoading) return;
   const action = room.playing ? 'pause' : 'play';
+  // A paused room's shared position is authoritative. Native play() can change
+  // currentTime, so capture and send the intended position before calling it.
+  let target = action === 'play' ? Math.max(0, room.position) : position();
+  const length = duration();
+  if (action === 'play' && length > 0 && target >= length) target = 0;
+  sendPlayback(action, target);
   if (action === 'play') {
-    if (room.media.kind === 'file') video.play().catch(() => {});
-    else if (ytReady) yt.playVideo();
+    if (room.media.kind === 'file') {
+      if (Math.abs(video.currentTime - target) > 0.05) video.currentTime = target;
+      video.play().catch(() => { });
+    } else if (ytReady) { yt.seekTo(target, true); yt.playVideo(); }
   }
-  sendPlayback(action);
 });
 document.getElementById('seek').addEventListener('change', () => sendPlayback('seek', duration() * Number(document.getElementById('seek').value) / 1000));
 document.getElementById('seek').addEventListener('input', () => { document.getElementById('current-time').textContent = time(duration() * Number(document.getElementById('seek').value) / 1000); });
@@ -487,10 +513,196 @@ fetch('/api/config').then(response => response.json()).then(data => {
   config = data;
   const mb = Math.round(config.maxUploadBytes / 1024 ** 2);
   document.getElementById('upload-formats').textContent = `MP4, WEBM, OGV · UP TO ${mb >= 1024 ? `${Math.round(mb / 1024)} GB` : `${mb} MB`}`;
-}).catch(() => {});
+}).catch(() => { });
 renderRoom();
 const invitedCode = new URL(location.href).searchParams.get('room');
 if (invitedCode && savedSession?.code !== invitedCode.toUpperCase()) {
   savedSession = null; saveStorage(sessionStorage, 'watchparty.session', null);
   openRoomDialog('join', invitedCode);
 }
+
+// Send clock requests and keep the lowest-delay sample.
+async function syncClock(generation = syncGeneration) {
+  if (
+    !socket.connected ||
+    generation !== syncGeneration ||
+    calibratingGeneration === generation
+  ) return;
+
+  calibratingGeneration = generation;
+
+  try {
+    const samples = [];
+
+    for (let i = 0; i < 5; i++) {
+      if (!socket.connected || generation !== syncGeneration) return;
+
+      const sentAt = performance.now();
+      const { serverNow } = await request('time:request');
+      const receivedAt = performance.now();
+
+      // Ignore replies belonging to an earlier connection.
+      if (!socket.connected || generation !== syncGeneration) return;
+
+      if (!Number.isFinite(serverNow)) {
+        throw new Error('Invalid server time');
+      }
+
+      const rtt = receivedAt - sentAt;
+
+      // Discard unusually slow samples.
+      if (rtt >= 0 && rtt <= 500) {
+        samples.push({
+          rtt,
+          offset: serverNow - (sentAt + receivedAt) / 2
+        });
+      }
+    }
+
+    if (!samples.length) {
+      throw new Error('No reliable clock samples');
+    }
+
+    samples.sort((a, b) => a.rtt - b.rtt);
+    clockOffsetMs = samples[0].offset;
+    clockCalibratedAt = performance.now();
+  } catch (error) {
+    if (generation === syncGeneration) {
+      console.warn('Clock sync:', error.message);
+    }
+  } finally {
+    if (calibratingGeneration === generation) {
+      calibratingGeneration = null;
+    }
+  }
+}
+
+// Read estimated server time without making a network request.
+function estimatedServerNow() {
+  const clockExpired =
+    performance.now() - clockCalibratedAt > 100000;
+
+  if (clockOffsetMs === null || clockExpired) return null;
+
+  return performance.now() + clockOffsetMs;
+}
+
+function checkDrift() {
+  if (
+    !socket.connected ||
+    restoring ||
+    document.hidden ||
+    sourceLoading ||
+    room?.media?.kind !== 'file' ||
+    room.media.id !== currentMediaId
+  ) return;
+
+  if (
+    video.seeking ||
+    video.error ||
+    !Number.isFinite(video.duration) ||
+    video.duration <= 0 ||
+    video.readyState < (room.playing ? 3 : 2)
+  ) return;
+
+  // A local pause needs a way back into playback, including when autoplay is blocked.
+  // The click handler fetches a fresh room snapshot before restoring the position.
+  if (room.playing && video.paused) {
+    document.getElementById('playback-gate').hidden = false;
+    return;
+  }
+
+  const serverNow = estimatedServerNow();
+  if (serverNow === null) return;
+
+  const now = performance.now();
+
+  // Allow new media and explicit host commands to settle.
+  if (
+    lastSyncMediaId !== currentMediaId ||
+    lastSyncRevision !== room.playbackRevision
+  ) {
+    lastSyncMediaId = currentMediaId;
+    lastSyncRevision = room.playbackRevision;
+    lastCorrectionAt = now;
+    outOfSyncChecks = 0;
+    return;
+  }
+
+  if (!room.playing && !video.paused) video.pause();
+
+  const elapsed = room.playing
+    ? Math.max(0, (serverNow - room.updatedAt) / 1000)
+    : 0;
+
+  const target = Math.min(
+    video.duration,
+    Math.max(0, room.position + elapsed)
+  );
+
+  const actual = video.currentTime;
+  const drift = actual - target;
+
+  if (LOG_DRIFT) {
+    console.log({
+      target,
+      actual,
+      driftMs: Math.round(drift * 1000)
+    });
+  }
+
+  if (Math.abs(drift) <= DRIFT_TOLERANCE) {
+    outOfSyncChecks = 0;
+    return;
+  }
+
+  if (now - lastCorrectionAt < CORRECTION_COOLDOWN) return;
+
+  // Require two out-of-sync checks before correcting.
+  if (++outOfSyncChecks < 2) return;
+
+  video.currentTime = target; // Only this viewer's player.
+  lastCorrectionAt = now;
+  outOfSyncChecks = 0;
+}
+
+function stopSync() {
+  syncGeneration++;
+
+  clearInterval(syncTimer);
+  clearInterval(clockTimer);
+  syncTimer = clockTimer = null;
+
+  clockOffsetMs = null;
+  calibratingGeneration = null;
+  lastSyncMediaId = lastSyncRevision = null;
+  outOfSyncChecks = 0;
+  lastCorrectionAt = -Infinity;
+}
+
+function startSync() {
+  stopSync();
+
+  if (!socket.connected || document.hidden) return;
+
+  const generation = syncGeneration;
+
+  void syncClock(generation);
+
+  clockTimer = setInterval(
+    () => void syncClock(generation),
+    30000
+  );
+
+  syncTimer = setInterval(checkDrift, 500);
+}
+
+socket.on('connect', startSync);
+socket.on('disconnect', stopSync);
+
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) stopSync();
+  else startSync();
+});
+
+if (socket.connected) startSync();

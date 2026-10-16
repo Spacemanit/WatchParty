@@ -10,7 +10,15 @@ The wireframe/e-ink revision adds separate home/party views and a party-code men
 
 Chat adds six integration cases (13 tests total): room-scoped delivery, server-owned sender identity, late-join/reconnect history, duplicate retries, literal HTML text, complex emoji sequences, character/rate limits, bounded history, and ten simultaneous chat senders. The ten-client chat test also checks that messaging does not change playback sequence or playback revision. These are real Socket.IO protocol tests; the chat panel and emoji picker have not been visually verified in a browser because preview inspection remains unavailable.
 
-There is no continuous drift correction or latency tuning in this edition. **p99 < 250 ms propagation and < 500 ms drift after correction are not measured or claimed.** A later benchmark must separately measure actual command-to-player application and player drift on physical LAN devices, and record hardware, browser versions, Wi-Fi/Ethernet conditions, video bitrate and number of viewers.
+Uploaded files now have clock calibration and local drift checks; YouTube drift correction and latency tuning remain unimplemented. **p99 < 250 ms propagation and < 500 ms drift after correction are not measured or claimed.** A later benchmark must separately measure actual command-to-player application and player drift on physical LAN devices, and record hardware, browser versions, Wi-Fi/Ethernet conditions, video bitrate and number of viewers.
+
+## Local playback regressions
+
+The suite now has 26 tests. Browser-function simulations cover recovery from an unexpected local pause, Play using the shared paused position, replay from zero after the end, and avoiding redundant seeks. Host tests also cover a participant joining after an empty host grace period.
+
+MP4 tests reproduce an upload with empty video/audio sync tables. They verify rebuilding the H.264 index from IDR frames, removing the empty AAC sync table, preserving encoded media bytes and chunk offsets, metadata before/after media, 64-bit offsets, fixed sample sizes, an open-ended media atom, repeat processing, invalid input, and authenticated HTTP upload/range responses. The reported 57,315,464-byte MP4 was separately inspected: it contains 1,618 video samples and six IDR frames, but its original sync tables contain no entries. A repaired copy preserves the media payload's SHA-256 hash. Actual Firefox decoding of that copy remains a manual check.
+
+After upgrading the server, restart it and re-upload an affected MP4 so the new index repair runs. Already uploaded files are not modified retroactively.
 
 ## Expected failure behavior
 

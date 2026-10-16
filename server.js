@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import os from 'node:os';
 import { Rooms, PartyError, youtubeId } from './lib/rooms.js';
+import { repairMp4Keyframes, Mp4IndexError } from './lib/mp4.js';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const formats = { '.mp4': 'video/mp4', '.webm': 'video/webm', '.ogv': 'video/ogg' };
@@ -53,9 +54,14 @@ export async function createPartyServer(options = {}) {
   app.post('/api/rooms/:code/upload', uploadAuth, upload.single('video'), async (req, res, next) => {
     try {
       if (!req.file) throw new PartyError('Choose a video to upload.');
+      if (!req.file.size) throw new PartyError('This video file is empty.');
+      if (path.extname(req.file.originalname).toLowerCase() === '.mp4') {
+        const result = await repairMp4Keyframes(req.file.path);
+        req.file.size = result.size;
+      }
+      // Repair can take time; recheck the host and generation after it completes.
       const { room } = rooms.authorize(req.params.code, req.party.token, true);
       if (room !== req.party.room || room.generation !== req.party.generation) throw new PartyError('The room or video changed during upload. Try again.');
-      if (!req.file.size) throw new PartyError('This video file is empty.');
       const media = { id: randomUUID(), kind: 'file', title: path.basename(req.file.originalname).slice(0, 180), path: req.file.path, type: formats[path.extname(req.file.originalname).toLowerCase()], size: req.file.size, uploadedBy: room.hostId };
       const old = rooms.select(room, media);
       await cleanFile(old);
@@ -78,8 +84,8 @@ export async function createPartyServer(options = {}) {
   app.use(express.static(path.join(root, 'public'), { etag: true }));
   app.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
-    const message = error.code === 'LIMIT_FILE_SIZE' ? `Video exceeds the ${Math.round(maxUploadBytes / 1024 / 1024)} MB upload limit.` : error instanceof PartyError || error instanceof multer.MulterError ? error.message : 'Something went wrong. Please try again.';
-    if (!(error instanceof PartyError || error instanceof multer.MulterError)) console.error(error);
+    const message = error.code === 'LIMIT_FILE_SIZE' ? `Video exceeds the ${Math.round(maxUploadBytes / 1024 / 1024)} MB upload limit.` : error instanceof PartyError || error instanceof Mp4IndexError || error instanceof multer.MulterError ? error.message : 'Something went wrong. Please try again.';
+    if (!(error instanceof PartyError || error instanceof Mp4IndexError || error instanceof multer.MulterError)) console.error(error);
     res.status(error.code === 'LIMIT_FILE_SIZE' ? 413 : 400).json({ error: message });
   });
 
@@ -149,6 +155,9 @@ export async function createPartyServer(options = {}) {
     });
     handle('host:transfer', ({ memberId }) => { bound(); rooms.transfer(binding.code, binding.token, memberId); return {}; });
     socket.on('disconnect', () => { if (binding) rooms.disconnect(binding.code, binding.id, socket.id); });
+    handle('time:request', () => ({
+      serverNow: Date.now()
+    }));
   });
 
   return {
